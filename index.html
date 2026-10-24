@@ -126,7 +126,7 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
   </section>
   <section id="rules">
     <h2>Настройте под свой проект</h2>
-    <p>Добавьте свои ключевые слова и проверки. Они дополнят встроенные и сработают при следующей сборке.</p>
+    <p>Добавьте свои ключевые слова и проверки. Они дополнят встроенные и сработают при следующей сборке. Слово ищется целиком; звёздочка в конце ловит любые окончания: склад*.</p>
     <input type="text" id="rule-keys" placeholder="Ключевые слова через запятую" aria-label="Ключевые слова через запятую">
     <textarea id="rule-checks" placeholder="Проверки, по одной на строку" aria-label="Проверки, по одной на строку"></textarea>
     <button id="rule-add" type="button">Добавить правило</button>
@@ -161,45 +161,66 @@ function normalize(text) {
   return String(text).toLowerCase().replace(/ё/g, 'е').trim();
 }
 
-// Основа ключевого слова: отрезаем окончание, чтобы «пароль» совпадало с «пароля», «паролем».
-function stem(key) {
+function tokenize(text) {
+  return normalize(text).split(/[^a-zа-я0-9]+/).filter(Boolean);
+}
+
+// Слово подходит ключу: точное совпадение; для длинных (6+) допускаются окончания до 3 букв;
+// ключ со «*» в конце: любое окончание у последнего слова.
+function tokenMatches(word, tok, anyEnding) {
+  if (anyEnding) return word.indexOf(tok) === 0;
+  if (word === tok) return true;
+  if (tok.length < 6) return false;
+  var base = tok.replace(/ь$/, '');
+  return word.indexOf(base) === 0 && word.length - base.length <= 3;
+}
+
+function keyMatches(words, key) {
   var k = normalize(key);
-  if (k.length >= 6) return k.slice(0, -2);
-  if (k.length >= 4) return k.slice(0, -1);
-  return k;
+  var star = k.charAt(k.length - 1) === '*';
+  var toks = tokenize(k);
+  if (toks.length === 0) return false;
+  for (var i = 0; i + toks.length <= words.length; i++) {
+    var ok = true;
+    for (var j = 0; j < toks.length && ok; j++) {
+      ok = tokenMatches(words[i + j], toks[j], star && j === toks.length - 1);
+    }
+    if (ok) return true;
+  }
+  return false;
 }
 
 function getRules() {
   return [
-    { keys: ['пароль', 'password'], group: 'Пароль', checks: [
+    { keys: ['парол*', 'password*'], group: 'Пароль', checks: [
       'Минимальная и максимальная длина пароля',
       'Пароль маскируется при вводе, есть переключатель показа',
       'Неверный пароль даёт понятную ошибку без раскрытия, что именно неверно',
       'Спецсимволы, пробелы и юникод в пароле',
       'Сброс и смена пароля'
     ] },
-    { keys: ['форма', 'form', 'анкета'], group: 'Форма', checks: [
+    { keys: ['форма', 'формы', 'форме', 'форму', 'формой', 'form', 'forms', 'анкета'], group: 'Форма', checks: [
       'Отправка с пустыми обязательными полями',
       'Подсветка и текст ошибок у каждого поля',
       'Данные сохраняются при ошибке валидации',
       'Повторная отправка (двойной клик) не создаёт дубль',
       'Навигация с клавиатуры: Tab и Enter'
     ] },
-    { keys: ['поле', 'ввод', 'input'], group: 'Поля ввода', checks: [
+    { keys: ['поле', 'поля', 'полей', 'полю', 'ввод', 'ввода', 'вводе', 'input', 'inputs'], group: 'Поля ввода', checks: [
       'Пустое значение',
       'Очень длинное значение',
       'Пробелы в начале и конце',
       'Спецсимволы и HTML-теги',
       'Вставка из буфера обмена'
     ] },
-    { keys: ['файл', 'загруз', 'upload'], group: 'Загрузка файла', checks: [
+    { keys: ['файл*', 'загруз*', 'upload*'], group: 'Загрузка файла', checks: [
       'Допустимые и недопустимые форматы',
       'Файл максимального размера и больше',
       'Пустой файл и файл с русским именем',
       'Отмена и обрыв загрузки',
       'Повторная загрузка того же файла'
     ] },
-    { keys: ['оплат', 'платеж', 'платёж', 'payment', 'карта'], group: 'Оплата', checks: [
+    { keys: ['оплат*', 'платеж*', 'payment*', 'карта', 'карты', 'карту', 'картой'], group: 'Оплата', checks: [
       'Успешная оплата и подтверждение',
       'Отказ банка и недостаточно средств',
       'Повторное нажатие «Оплатить» не списывает дважды',
@@ -207,35 +228,35 @@ function getRules() {
       'Возврат и отмена платежа',
       'Сумма и валюта отображаются верно'
     ] },
-    { keys: ['поиск', 'search', 'фильтр'], group: 'Поиск и фильтры', checks: [
+    { keys: ['поиск*', 'search*', 'фильтр*'], group: 'Поиск и фильтры', checks: [
       'Пустой запрос',
       'Запрос без результатов',
       'Регистр и спецсимволы в запросе',
       'Сочетание нескольких фильтров',
       'Сброс фильтров'
     ] },
-    { keys: ['вход', 'логин', 'авториз', 'login'], group: 'Авторизация', checks: [
+    { keys: ['вход', 'входа', 'входе', 'входу', 'логин*', 'авториз*', 'login*'], group: 'Авторизация', checks: [
       'Вход с верными данными',
       'Вход с неверным логином или паролем',
       'Блокировка после нескольких неудачных попыток',
       'Сессия после закрытия вкладки и выхода',
       'Доступ к закрытым страницам без входа'
     ] },
-    { keys: ['регистр', 'signup', 'аккаунт'], group: 'Регистрация', checks: [
+    { keys: ['регистрац*', 'signup', 'sign up', 'аккаунт*'], group: 'Регистрация', checks: [
       'Регистрация с уже существующей почтой',
       'Проверка формата почты и телефона',
       'Подтверждение почты и повторная отправка письма',
       'Обязательные согласия',
       'Первый вход после регистрации'
     ] },
-    { keys: ['список', 'таблиц', 'пагин'], group: 'Списки и таблицы', checks: [
+    { keys: ['список*', 'таблиц*', 'пагинац*', 'pagination'], group: 'Списки и таблицы', checks: [
       'Пустой список',
       'Один элемент и очень много элементов',
       'Сортировка и постраничный вывод',
       'Длинные значения в ячейках',
       'Обновление списка после изменения данных'
     ] },
-    { keys: ['уведомл', 'email', 'письм', 'notification'], group: 'Уведомления', checks: [
+    { keys: ['уведомл*', 'email', 'e-mail', 'письм*', 'notification*'], group: 'Уведомления', checks: [
       'Уведомление приходит один раз',
       'Текст и тема без ошибок и пустых подстановок',
       'Отключение уведомлений',
@@ -245,19 +266,16 @@ function getRules() {
 }
 
 function matchRules(description, rules) {
-  var words = normalize(description).split(/[^a-zа-я0-9]+/).filter(Boolean);
+  var words = tokenize(description);
   return rules.filter(function (rule) {
-    return rule.keys.some(function (key) {
-      var s = stem(key);
-      return s.length > 0 && words.some(function (w) { return w.indexOf(s) === 0; });
-    });
+    return rule.keys.some(function (key) { return keyMatches(words, key); });
   });
 }
 
 function buildChecklist(description, customRules) {
   if (!normalize(description)) return { items: [], usedDefault: false };
   var matched = matchRules(description, getRules().concat(customRules || []));
-  var seen = {};
+  var seen = Object.create(null);
   var items = [];
   function add(group, text) {
     var k = group + '\u0000' + text;
@@ -334,7 +352,7 @@ function saveCustomRules(rules, storage) {
 function renderResult(container, items) {
   container.textContent = '';
   var groups = [];
-  var byGroup = {};
+  var byGroup = Object.create(null);
   items.forEach(function (it) {
     if (!byGroup[it.group]) { byGroup[it.group] = []; groups.push(it.group); }
     byGroup[it.group].push(it.text);

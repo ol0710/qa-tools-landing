@@ -177,6 +177,66 @@ check('секция правил и подвал заполнены, без за
   assert.ok(/<footer id="footer">[\s\S]*?\S[\s\S]*?<\/footer>/.test(readHtml()));
 });
 
+// --- Итоговое ревью: исправления ---
+check('нет ложных срабатываний на обычных описаниях', () => {
+  const app = loadApp();
+  const cases = [
+    'Пользователь может удалить комментарий',
+    'Политика конфиденциальности',
+    'Экспорт отчёта в формате PDF',
+    'Button for sharing a post',
+    'Карточка товара с картинкой',
+    'Логирование ошибок на сервере',
+    'Входящие сообщения в чате',
+    'Поиск без учёта регистра'
+  ];
+  const unwanted = { 'Пользователь может удалить комментарий': 'Поля ввода', 'Политика конфиденциальности': 'Поля ввода', 'Экспорт отчёта в формате PDF': 'Форма', 'Button for sharing a post': 'Форма', 'Карточка товара с картинкой': 'Оплата', 'Логирование ошибок на сервере': 'Авторизация', 'Входящие сообщения в чате': 'Авторизация', 'Поиск без учёта регистра': 'Регистрация' };
+  for (const d of cases) {
+    const groups = app.buildChecklist(d, []).items.map((i) => i.group);
+    assert.ok(!groups.includes(unwanted[d]), d + ' -> ' + unwanted[d]);
+  }
+});
+
+check('настоящие формы слов по-прежнему находятся', () => {
+  const app = loadApp();
+  const has = (d, g) => app.buildChecklist(d, []).items.some((i) => i.group === g);
+  assert.ok(has('Поле для ввода даты', 'Поля ввода'));
+  assert.ok(has('Заполнить поля формы', 'Форма'));
+  assert.ok(has('Оплата картой', 'Оплата'));
+  assert.ok(has('Вход в личный кабинет', 'Авторизация'));
+  assert.ok(has('Регистрация нового аккаунта', 'Регистрация'));
+  assert.ok(has('Поиск по каталогу', 'Поиск и фильтры'));
+});
+
+check('ключ из нескольких слов и с дефисом срабатывает', () => {
+  const app = loadApp();
+  const hit = (key, d) => app.buildChecklist(d, [app.parseRuleInput(key, 'X')]).items.some((i) => i.text === 'X');
+  assert.ok(hit('личный кабинет', 'Тест: личный кабинет клиента'));
+  assert.ok(hit('двойной клик', 'двойной клик по кнопке'));
+  assert.ok(hit('e-mail', 'Письмо на E-Mail'));
+  assert.ok(!hit('личный кабинет', 'личный счёт и кабинет врача'));
+});
+
+check('звёздочка в конце ключа: любое окончание', () => {
+  const app = loadApp();
+  const hit = (key, d) => app.buildChecklist(d, [app.parseRuleInput(key, 'X')]).items.some((i) => i.text === 'X');
+  assert.ok(hit('склад*', 'Проверка склада'));
+  assert.ok(!hit('склад', 'Проверка склада'));
+  assert.ok(hit('склад', 'Проверка склад'));
+});
+
+check('ключ constructor не роняет отрисовку', () => {
+  const app = loadApp();
+  const fake = () => ({ children: [], textContent: '', appendChild(c) { this.children.push(c); } });
+  app.document = { createElement: fake };
+  const container = fake();
+  const items = app.buildChecklist('constructor page', [app.parseRuleInput('constructor', 'Проверка')]).items;
+  assert.ok(items.some((i) => i.group === 'constructor'));
+  vm.runInContext('renderResult', app); // функция доступна
+  app.renderResult(container, items);
+  assert.ok(container.children.length >= 2);
+});
+
 // --- проверки следующих задач добавляются выше этой строки ---
 
 if (failed) {
