@@ -30,7 +30,7 @@ function check(name, fn) {
     console.log('OK   ' + name);
   } catch (e) {
     failed++;
-    console.log('FAIL ' + name + ': ' + e.message.split('\n')[0]);
+    console.log('FAIL ' + name + ': ' + e.message.split('\n').slice(0, 8).join(' | '));
   }
 }
 
@@ -46,7 +46,7 @@ check('есть viewport', () => {
 
 check('есть секции', () => {
   const html = readHtml();
-  for (const id of ['tool', 'problem', 'rules', 'soon', 'footer']) {
+  for (const id of ['tool', 'problem', 'rules', 'bug', 'footer']) {
     assert.ok(new RegExp('id="' + id + '"').test(html), 'нет #' + id);
   }
 });
@@ -163,16 +163,8 @@ check('своё правило срабатывает в buildChecklist', () => 
   assert.strictEqual(r.usedDefault, false);
 });
 
-check('«скоро»: две карточки без ссылок', () => {
-  const sec = readHtml().match(/<section[^>]*id="soon"[\s\S]*?<\/section>/)[0];
-  assert.strictEqual((sec.match(/class="card"/g) || []).length, 2);
-  assert.ok(!/href/i.test(sec), 'есть href');
-  assert.ok(/баг-репорт/i.test(sec) && /покрыти/i.test(sec));
-});
-
 check('секция правил и подвал заполнены, без заглушек', () => {
   assert.ok(!sectionText('rules').includes('Заглушка'));
-  assert.ok(!sectionText('soon').includes('Заглушка'));
   assert.ok(readHtml().includes('только в этом браузере'));
   assert.ok(/<footer id="footer">[\s\S]*?\S[\s\S]*?<\/footer>/.test(readHtml()));
 });
@@ -287,6 +279,38 @@ check('bugReportToCsv: BOM, заголовок, шаги, защита ячее�
   assert.ok(row.indexOf("'=1+1;") === 0, 'формула');
   assert.ok(csv.indexOf('"1. a\n2. b"') !== -1, 'шаги');
   assert.ok(csv.indexOf('"a;b ""q"""') !== -1, 'экранирование');
+});
+
+check('секция баг-репорта', () => {
+  const html = readHtml();
+  const pos = (id) => html.indexOf('id="' + id + '"');
+  assert.ok(pos('tool') < pos('bug') && pos('bug') < pos('problem'), 'порядок секций');
+  const sec = html.match(/<section[^>]*id="bug"[^>]*>([\s\S]*?)<\/section>/);
+  assert.ok(sec, 'нет секции #bug');
+  for (const id of ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity']) {
+    assert.ok(sec[1].includes('id="' + id + '"'), 'нет поля ' + id);
+    assert.ok(sec[1].includes('<label class="field" for="' + id + '"'), 'нет label для ' + id);
+  }
+  assert.ok(sec[1].includes('id="bug-build"') && sec[1].includes('id="bug-copy"') && sec[1].includes('id="bug-csv"'), 'кнопки');
+  const sel = sec[1].match(/<select[^>]*id="bug-severity"[^>]*>([\s\S]*?)<\/select>/);
+  assert.ok(sel, 'нет select');
+  const opts = sel[1].match(/<option[^>]*>[^<]*<\/option>/g) || [];
+  assert.deepStrictEqual(opts.map((o) => o.replace(/<[^>]+>/g, '')), ['Блокирующая', 'Критичная', 'Значимая', 'Незначительная', 'Тривиальная']);
+  const selected = opts.filter((o) => /\bselected\b/.test(o));
+  assert.strictEqual(selected.length, 1);
+  assert.ok(selected[0].includes('Значимая'), 'по умолчанию Значимая');
+});
+
+check('нет блока «Скоро»', () => {
+  const html = readHtml();
+  assert.ok(!html.includes('id="soon"'));
+  assert.ok(!html.includes('Калькулятор покрытия'));
+  assert.ok(!html.includes('Шаблон баг-репорта'));
+  assert.ok(!html.includes('class="card"'));
+});
+
+check('баг-репорт не использует innerHTML', () => {
+  assert.ok(!readHtml().includes('innerHTML'));
 });
 
 // --- проверки следующих задач добавляются выше этой строки ---
