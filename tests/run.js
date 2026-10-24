@@ -30,7 +30,7 @@ function check(name, fn) {
     console.log('OK   ' + name);
   } catch (e) {
     failed++;
-    console.log('FAIL ' + name + ': ' + e.message.split('\n')[0]);
+    console.log('FAIL ' + name + ': ' + e.message.split('\n').slice(0, 8).join(' | '));
   }
 }
 
@@ -46,7 +46,7 @@ check('есть viewport', () => {
 
 check('есть секции', () => {
   const html = readHtml();
-  for (const id of ['tool', 'problem', 'rules', 'soon', 'footer']) {
+  for (const id of ['tool', 'problem', 'rules', 'bug', 'footer']) {
     assert.ok(new RegExp('id="' + id + '"').test(html), 'нет #' + id);
   }
 });
@@ -163,16 +163,8 @@ check('своё правило срабатывает в buildChecklist', () => 
   assert.strictEqual(r.usedDefault, false);
 });
 
-check('«скоро»: две карточки без ссылок', () => {
-  const sec = readHtml().match(/<section[^>]*id="soon"[\s\S]*?<\/section>/)[0];
-  assert.strictEqual((sec.match(/class="card"/g) || []).length, 2);
-  assert.ok(!/href/i.test(sec), 'есть href');
-  assert.ok(/баг-репорт/i.test(sec) && /покрыти/i.test(sec));
-});
-
 check('секция правил и подвал заполнены, без заглушек', () => {
   assert.ok(!sectionText('rules').includes('Заглушка'));
-  assert.ok(!sectionText('soon').includes('Заглушка'));
   assert.ok(readHtml().includes('только в этом браузере'));
   assert.ok(/<footer id="footer">[\s\S]*?\S[\s\S]*?<\/footer>/.test(readHtml()));
 });
@@ -249,6 +241,99 @@ check('блок правил объясняет, что вводить, и да�
   assert.ok(/placeholder="Остаток не уходит в минус&#10;Приёмка обновляет остаток"/.test(sec), 'пример проверок');
   assert.ok(text.includes('склад*') && text.includes('любые окончания'), 'подсказка про звёздочку');
   assert.ok(/<label[^>]*for="rule-keys"/.test(sec) && /<label[^>]*for="rule-checks"/.test(sec), 'подписи полей');
+});
+
+// --- Баг-репорт: функции ---
+check('bugSteps: без пустых, обрезанные', () => {
+  const app = loadApp();
+  assert.deepStrictEqual(Array.from(app.bugSteps('a\r\n\r\n  b  \n')), ['a', 'b']);
+});
+
+check('isBugReportComplete: нужны заголовок, actual и шаг', () => {
+  const app = loadApp();
+  const ok = { title: 'T', steps: 'a', actual: 'X' };
+  assert.strictEqual(app.isBugReportComplete(ok), true);
+  assert.strictEqual(app.isBugReportComplete({ title: ' ', steps: 'a', actual: 'X' }), false);
+  assert.strictEqual(app.isBugReportComplete({ title: 'T', steps: 'a', actual: '' }), false);
+  assert.strictEqual(app.isBugReportComplete({ title: 'T', steps: '   ', actual: 'X' }), false);
+  assert.strictEqual(app.isBugReportComplete({ title: 'T', steps: '\n \n', actual: 'X' }), false);
+});
+
+check('buildBugReportText: пустые env и expected пропускаются', () => {
+  const app = loadApp();
+  assert.strictEqual(
+    app.buildBugReportText({ title: 'T', severity: 'Значимая', env: '', steps: 'a\nb', expected: '', actual: 'X' }),
+    'Заголовок: T\nСерьёзность: Значимая\n\nШаги:\n1. a\n2. b\n\nФактический результат: X'
+  );
+  assert.strictEqual(
+    app.buildBugReportText({ title: 'T', severity: 'Значимая', env: 'Chrome', steps: 'a\nb', expected: 'Y', actual: 'X' }),
+    'Заголовок: T\nСерьёзность: Значимая\nОкружение: Chrome\n\nШаги:\n1. a\n2. b\n\nОжидаемый результат: Y\nФактический результат: X'
+  );
+});
+
+check('bugReportToCsv: BOM, заголовок, шаги, защита ячеек', () => {
+  const app = loadApp();
+  const csv = app.bugReportToCsv({ title: '=1+1', severity: 'Значимая', env: '', steps: 'a\nb', expected: '', actual: 'a;b "q"' });
+  assert.ok(csv.indexOf('﻿Заголовок;Серьёзность;Окружение;Шаги;Ожидаемый результат;Фактический результат\r\n') === 0);
+  const row = csv.split('\r\n')[1];
+  assert.ok(row.indexOf("'=1+1;") === 0, 'формула');
+  assert.ok(csv.indexOf('"1. a\n2. b"') !== -1, 'шаги');
+  assert.ok(csv.indexOf('"a;b ""q"""') !== -1, 'экранирование');
+});
+
+check('секция баг-репорта', () => {
+  const html = readHtml();
+  const pos = (id) => html.indexOf('id="' + id + '"');
+  assert.ok(pos('tool') < pos('bug') && pos('bug') < pos('problem'), 'порядок секций');
+  const sec = html.match(/<section[^>]*id="bug"[^>]*>([\s\S]*?)<\/section>/);
+  assert.ok(sec, 'нет секции #bug');
+  for (const id of ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity']) {
+    assert.ok(sec[1].includes('id="' + id + '"'), 'нет поля ' + id);
+    assert.ok(sec[1].includes('<label class="field" for="' + id + '"'), 'нет label для ' + id);
+  }
+  assert.ok(sec[1].includes('id="bug-build"') && sec[1].includes('id="bug-copy"') && sec[1].includes('id="bug-csv"'), 'кнопки');
+  const sel = sec[1].match(/<select[^>]*id="bug-severity"[^>]*>([\s\S]*?)<\/select>/);
+  assert.ok(sel, 'нет select');
+  const opts = sel[1].match(/<option[^>]*>[^<]*<\/option>/g) || [];
+  assert.deepStrictEqual(opts.map((o) => o.replace(/<[^>]+>/g, '')), ['Блокирующая', 'Критичная', 'Значимая', 'Незначительная', 'Тривиальная']);
+  const selected = opts.filter((o) => /\bselected\b/.test(o));
+  assert.strictEqual(selected.length, 1);
+  assert.ok(selected[0].includes('Значимая'), 'по умолчанию Значимая');
+});
+
+check('нет блока «Скоро»', () => {
+  const html = readHtml();
+  assert.ok(!html.includes('id="soon"'));
+  assert.ok(!html.includes('Калькулятор покрытия'));
+  assert.ok(!html.includes('Шаблон баг-репорта'));
+  assert.ok(!html.includes('class="card"'));
+});
+
+check('глобальное правило [hidden] скрывает элементы', () => {
+  assert.ok(/(^|\n)\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/.test(readHtml()));
+});
+
+check('изменение любого поля баг-репорта сбрасывает результат', () => {
+  const html = readHtml();
+  assert.ok(html.includes('function resetBugResult'), 'нет resetBugResult');
+  for (const id of ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity']) {
+    assert.ok(html.includes("'" + id + "'"), 'нет ' + id + ' в скрипте');
+  }
+  assert.ok(/addEventListener\('input', resetBugResult\)/.test(html), 'нет input-обработчика');
+  assert.ok(/addEventListener\('change', resetBugResult\)/.test(html), 'нет change-обработчика');
+});
+
+check('баг-репорт не использует innerHTML', () => {
+  assert.ok(!readHtml().includes('innerHTML'));
+});
+
+check('под заголовком #tool есть строка-пояснение без упоминания ИИ', () => {
+  const text = 'Чек-листы и баг-репорты из описания фичи. Всё в браузере, данные никуда не уходят.';
+  const html = readHtml();
+  const m = html.match(/<section[^>]*id="tool"[^>]*>[\s\S]*?<\/h1>\s*<p class="lead">([^<]*)<\/p>/);
+  assert.ok(m, 'нет <p class="lead"> сразу под h1');
+  assert.strictEqual(m[1], text);
+  assert.ok(!/ИИ|нейросет/i.test(m[1]));
 });
 
 // --- проверки следующих задач добавляются выше этой строки ---

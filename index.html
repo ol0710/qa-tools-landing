@@ -34,6 +34,7 @@ h3 { font-size: 1rem; margin: 16px 0 6px; color: var(--muted); }
 p { margin: 0 0 12px; }
 
 #tool { text-align: center; }
+.lead { color: var(--muted); font-size: 1.125rem; margin: 0 0 20px; }
 textarea {
   display: block;
   width: 100%;
@@ -65,7 +66,7 @@ button.primary {
   width: 100%;
   margin-top: 12px;
 }
-button[hidden] { display: none; }
+[hidden] { display: none !important; }
 #hint { min-height: 1.5em; margin: 8px 0 0; color: var(--muted); }
 #result { text-align: left; margin-top: 16px; }
 #result ul { list-style: none; margin: 0; padding: 0; }
@@ -100,11 +101,21 @@ label.field { display: block; margin: 12px 0 4px; font-size: 0.9rem; color: var(
 }
 .note { color: var(--muted); font-size: 0.9rem; }
 #rules-warning { color: #fbbf24; font-size: 0.9rem; }
-.cards { display: grid; gap: 12px; grid-template-columns: 1fr; }
-@media (min-width: 560px) { .cards { grid-template-columns: 1fr 1fr; } }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
-.card h3 { margin-top: 0; color: var(--text); }
-.card .soon-tag { color: var(--muted); font-size: 0.9rem; }
+#bug textarea { min-height: 90px; }
+#bug select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+#bug-hint { min-height: 1.5em; margin: 8px 0 0; color: var(--muted); }
+#bug-result { margin-top: 16px; min-height: 200px; }
+#bug-copy, #bug-csv { margin-top: 12px; margin-right: 8px; }
 footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1px solid var(--border); }
 </style>
 </head>
@@ -112,12 +123,41 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
 <main>
   <section id="tool">
     <h1>Чек-лист по описанию фичи за секунды</h1>
+    <p class="lead">Чек-листы и баг-репорты из описания фичи. Всё в браузере, данные никуда не уходят.</p>
     <label for="desc" class="sr" style="position:absolute;left:-9999px">Описание фичи</label>
     <textarea id="desc" placeholder="Описание фичи, например: форма входа с паролем"></textarea>
     <button id="build" class="primary" type="button">Собрать чек-лист</button>
     <p id="hint" role="status"></p>
     <div id="result"></div>
     <button id="csv" type="button" hidden>Скачать для Excel (.csv)</button>
+  </section>
+  <section id="bug">
+    <h2>Баг-репорт для Jira и Excel</h2>
+    <p>Заполните поля, получите готовый текст для Jira или файл для Excel.</p>
+    <label class="field" for="bug-title">Заголовок</label>
+    <input type="text" id="bug-title" placeholder="Вход не работает с пустым паролем">
+    <label class="field" for="bug-env">Окружение</label>
+    <input type="text" id="bug-env" placeholder="Chrome 126, Windows 11">
+    <label class="field" for="bug-steps">Шаги, по одному на строку</label>
+    <textarea id="bug-steps" placeholder="Открыть страницу входа&#10;Ввести пустой пароль&#10;Нажать «Войти»"></textarea>
+    <label class="field" for="bug-expected">Ожидаемый результат</label>
+    <textarea id="bug-expected" placeholder="Показана ошибка «Введите пароль»"></textarea>
+    <label class="field" for="bug-actual">Фактический результат</label>
+    <textarea id="bug-actual" placeholder="Пользователь входит в аккаунт"></textarea>
+    <label class="field" for="bug-severity">Серьёзность</label>
+    <select id="bug-severity">
+      <option>Блокирующая</option>
+      <option>Критичная</option>
+      <option selected>Значимая</option>
+      <option>Незначительная</option>
+      <option>Тривиальная</option>
+    </select>
+    <button id="bug-build" class="primary" type="button">Собрать баг-репорт</button>
+    <p id="bug-hint" role="status"></p>
+    <label class="field" for="bug-result" id="bug-result-label" hidden>Готовый баг-репорт</label>
+    <textarea id="bug-result" readonly hidden></textarea>
+    <button id="bug-copy" type="button" hidden>Скопировать</button>
+    <button id="bug-csv" type="button" hidden>Скачать для Excel (.csv)</button>
   </section>
   <section id="problem">
     <h2>Рутина, которую можно не повторять</h2>
@@ -138,13 +178,6 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <ul id="rules-list"></ul>
     <p class="note">Правила хранятся только в этом браузере.</p>
     <p id="rules-warning" role="status" hidden></p>
-  </section>
-  <section id="soon">
-    <h2>Скоро</h2>
-    <div class="cards">
-      <div class="card"><h3>Шаблон баг-репорта</h3><p class="soon-tag">скоро</p></div>
-      <div class="card"><h3>Калькулятор покрытия</h3><p class="soon-tag">скоро</p></div>
-    </div>
   </section>
   <footer id="footer">Набор маленьких QA-инструментов. Данные остаются в вашем браузере.</footer>
 </main>
@@ -312,6 +345,34 @@ function toCsv(items) {
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
 
+function bugSteps(steps) {
+  return String(steps).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function isBugReportComplete(f) {
+  return String(f.title).trim() !== '' && String(f.actual).trim() !== '' && bugSteps(f.steps).length > 0;
+}
+
+function buildBugReportText(f) {
+  var lines = ['Заголовок: ' + String(f.title).trim(), 'Серьёзность: ' + f.severity];
+  var env = String(f.env).trim();
+  var expected = String(f.expected).trim();
+  if (env) lines.push('Окружение: ' + env);
+  lines.push('', 'Шаги:');
+  bugSteps(f.steps).forEach(function (s, i) { lines.push((i + 1) + '. ' + s); });
+  lines.push('');
+  if (expected) lines.push('Ожидаемый результат: ' + expected);
+  lines.push('Фактический результат: ' + String(f.actual).trim());
+  return lines.join('\n');
+}
+
+function bugReportToCsv(f) {
+  var steps = bugSteps(f.steps).map(function (s, i) { return (i + 1) + '. ' + s; }).join('\n');
+  var row = [String(f.title).trim(), f.severity, String(f.env).trim(), steps, String(f.expected).trim(), String(f.actual).trim()];
+  return '﻿' + ['Заголовок;Серьёзность;Окружение;Шаги;Ожидаемый результат;Фактический результат',
+    row.map(csvCell).join(';')].join('\r\n') + '\r\n';
+}
+
 var RULES_KEY = 'qa-custom-rules';
 
 function parseRuleInput(keysText, checksText) {
@@ -375,16 +436,20 @@ function renderResult(container, items) {
   });
 }
 
-function downloadCsv(items) {
-  var blob = new Blob([toCsv(items)], { type: 'text/csv;charset=utf-8' });
+function downloadText(filename, text) {
+  var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  a.download = 'checklist.csv';
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+}
+
+function downloadCsv(items) {
+  downloadText('checklist.csv', toCsv(items));
 }
 
 var currentItems = [];
@@ -449,12 +514,71 @@ function onBuild() {
   else hint.textContent = '';
 }
 
+function readBugForm() {
+  function v(id) { return document.getElementById(id).value; }
+  return { title: v('bug-title'), env: v('bug-env'), steps: v('bug-steps'),
+    expected: v('bug-expected'), actual: v('bug-actual'), severity: v('bug-severity') };
+}
+
+function setBugResultVisible(visible) {
+  ['bug-result-label', 'bug-result', 'bug-copy', 'bug-csv'].forEach(function (id) {
+    document.getElementById(id).hidden = !visible;
+  });
+}
+
+// Любая правка формы делает результат устаревшим: скрываем и очищаем его.
+function resetBugResult() {
+  setBugResultVisible(false);
+  document.getElementById('bug-result').value = '';
+  document.getElementById('bug-hint').textContent = '';
+}
+
+function onBugBuild() {
+  var f = readBugForm();
+  var hint = document.getElementById('bug-hint');
+  if (!isBugReportComplete(f)) {
+    hint.textContent = 'Заполните заголовок, шаги и фактический результат';
+    setBugResultVisible(false);
+    return;
+  }
+  hint.textContent = '';
+  document.getElementById('bug-result').value = buildBugReportText(f);
+  setBugResultVisible(true);
+}
+
+function onBugCopy() {
+  var field = document.getElementById('bug-result');
+  var hint = document.getElementById('bug-hint');
+  function fallback() {
+    field.select();
+    hint.textContent = 'Выделено, нажмите Ctrl+C';
+  }
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) { fallback(); return; }
+    navigator.clipboard.writeText(field.value).then(function () {
+      hint.textContent = 'Скопировано';
+    }, fallback);
+  } catch (e) {
+    fallback();
+  }
+}
+
 if (typeof document !== 'undefined') {
   customRules = loadCustomRules();
   renderRules();
   document.getElementById('rule-add').addEventListener('click', onAddRule);
   document.getElementById('build').addEventListener('click', onBuild);
   document.getElementById('csv').addEventListener('click', function () { downloadCsv(currentItems); });
+  ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', resetBugResult);
+    el.addEventListener('change', resetBugResult);
+  });
+  document.getElementById('bug-build').addEventListener('click', onBugBuild);
+  document.getElementById('bug-copy').addEventListener('click', onBugCopy);
+  document.getElementById('bug-csv').addEventListener('click', function () {
+    downloadText('bug-report.csv', bugReportToCsv(readBugForm()));
+  });
 }
 </script>
 </body>
