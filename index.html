@@ -87,6 +87,7 @@ input[type="text"] {
 }
 input::placeholder { color: var(--muted); }
 #rules textarea { min-height: 90px; margin-bottom: 8px; }
+label.field { display: block; margin: 12px 0 4px; font-size: 0.9rem; color: var(--muted); }
 #rules-list { list-style: none; margin: 16px 0 0; padding: 0; }
 #rules-list li {
   display: flex;
@@ -121,15 +122,18 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
   <section id="problem">
     <h2>Рутина, которую можно не повторять</h2>
     <p>Чек-листы и тест-кейсы каждый раз собираются с нуля, баг-репорты пишутся руками. Это время уходит на одно и то же.</p>
-    <p>Инструмент выбирает стартовую заготовку по ключевым словам из описания фичи. Вы правите её под проект и добавляете свои правила.</p>
+    <p>Инструмент выбирает стартовую заготовку по ключевым словам из описания фичи. Вы правите её под проект и добавляете свои проверки.</p>
     <p>Всё работает в браузере. Описания и правила никуда не отправляются.</p>
   </section>
   <section id="rules">
-    <h2>Настройте под свой проект</h2>
-    <p>Добавьте свои ключевые слова и проверки. Они дополнят встроенные и сработают при следующей сборке. Слово ищется целиком; звёздочка в конце ловит любые окончания: склад*.</p>
-    <input type="text" id="rule-keys" placeholder="Ключевые слова через запятую" aria-label="Ключевые слова через запятую">
-    <textarea id="rule-checks" placeholder="Проверки, по одной на строку" aria-label="Проверки, по одной на строку"></textarea>
-    <button id="rule-add" type="button">Добавить правило</button>
+    <h2>Свои проверки для вашей темы</h2>
+    <p>Встроенные темы знают пароли, формы, оплату и поиск. Если у вас другая тема, например склад, добавьте её сами. Сработает, когда это слово встретится в описании фичи.</p>
+    <label class="field" for="rule-keys">Ключевые слова через запятую</label>
+    <input type="text" id="rule-keys" placeholder="склад, остаток">
+    <label class="field" for="rule-checks">Проверки, по одной на строку</label>
+    <textarea id="rule-checks" placeholder="Остаток не уходит в минус&#10;Приёмка обновляет остаток"></textarea>
+    <p class="note">Хотите ловить любые окончания слова? Поставьте * в конце: склад* найдёт «склад», «склада», «складе». Слово без * ищется целиком.</p>
+    <button id="rule-add" type="button">Добавить</button>
     <p id="rule-hint" class="note" role="status"></p>
     <ul id="rules-list"></ul>
     <p class="note">Правила хранятся только в этом браузере.</p>
