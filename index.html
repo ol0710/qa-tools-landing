@@ -312,6 +312,34 @@ function toCsv(items) {
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
 
+function bugSteps(steps) {
+  return String(steps).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function isBugReportComplete(f) {
+  return String(f.title).trim() !== '' && String(f.actual).trim() !== '' && bugSteps(f.steps).length > 0;
+}
+
+function buildBugReportText(f) {
+  var lines = ['Заголовок: ' + String(f.title).trim(), 'Серьёзность: ' + f.severity];
+  var env = String(f.env).trim();
+  var expected = String(f.expected).trim();
+  if (env) lines.push('Окружение: ' + env);
+  lines.push('', 'Шаги:');
+  bugSteps(f.steps).forEach(function (s, i) { lines.push((i + 1) + '. ' + s); });
+  lines.push('');
+  if (expected) lines.push('Ожидаемый результат: ' + expected);
+  lines.push('Фактический результат: ' + String(f.actual).trim());
+  return lines.join('\n');
+}
+
+function bugReportToCsv(f) {
+  var steps = bugSteps(f.steps).map(function (s, i) { return (i + 1) + '. ' + s; }).join('\n');
+  var row = [String(f.title).trim(), f.severity, String(f.env).trim(), steps, String(f.expected).trim(), String(f.actual).trim()];
+  return '﻿' + ['Заголовок;Серьёзность;Окружение;Шаги;Ожидаемый результат;Фактический результат',
+    row.map(csvCell).join(';')].join('\r\n') + '\r\n';
+}
+
 var RULES_KEY = 'qa-custom-rules';
 
 function parseRuleInput(keysText, checksText) {

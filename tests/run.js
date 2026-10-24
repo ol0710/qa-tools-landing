@@ -251,6 +251,44 @@ check('блок правил объясняет, что вводить, и да�
   assert.ok(/<label[^>]*for="rule-keys"/.test(sec) && /<label[^>]*for="rule-checks"/.test(sec), 'подписи полей');
 });
 
+// --- Баг-репорт: функции ---
+check('bugSteps: без пустых, обрезанные', () => {
+  const app = loadApp();
+  assert.deepStrictEqual(Array.from(app.bugSteps('a\r\n\r\n  b  \n')), ['a', 'b']);
+});
+
+check('isBugReportComplete: нужны заголовок, actual и шаг', () => {
+  const app = loadApp();
+  const ok = { title: 'T', steps: 'a', actual: 'X' };
+  assert.strictEqual(app.isBugReportComplete(ok), true);
+  assert.strictEqual(app.isBugReportComplete({ title: ' ', steps: 'a', actual: 'X' }), false);
+  assert.strictEqual(app.isBugReportComplete({ title: 'T', steps: 'a', actual: '' }), false);
+  assert.strictEqual(app.isBugReportComplete({ title: 'T', steps: '   ', actual: 'X' }), false);
+  assert.strictEqual(app.isBugReportComplete({ title: 'T', steps: '\n \n', actual: 'X' }), false);
+});
+
+check('buildBugReportText: пустые env и expected пропускаются', () => {
+  const app = loadApp();
+  assert.strictEqual(
+    app.buildBugReportText({ title: 'T', severity: 'Значимая', env: '', steps: 'a\nb', expected: '', actual: 'X' }),
+    'Заголовок: T\nСерьёзность: Значимая\n\nШаги:\n1. a\n2. b\n\nФактический результат: X'
+  );
+  assert.strictEqual(
+    app.buildBugReportText({ title: 'T', severity: 'Значимая', env: 'Chrome', steps: 'a\nb', expected: 'Y', actual: 'X' }),
+    'Заголовок: T\nСерьёзность: Значимая\nОкружение: Chrome\n\nШаги:\n1. a\n2. b\n\nОжидаемый результат: Y\nФактический результат: X'
+  );
+});
+
+check('bugReportToCsv: BOM, заголовок, шаги, защита ячеек', () => {
+  const app = loadApp();
+  const csv = app.bugReportToCsv({ title: '=1+1', severity: 'Значимая', env: '', steps: 'a\nb', expected: '', actual: 'a;b "q"' });
+  assert.ok(csv.indexOf('﻿Заголовок;Серьёзность;Окружение;Шаги;Ожидаемый результат;Фактический результат\r\n') === 0);
+  const row = csv.split('\r\n')[1];
+  assert.ok(row.indexOf("'=1+1;") === 0, 'формула');
+  assert.ok(csv.indexOf('"1. a\n2. b"') !== -1, 'шаги');
+  assert.ok(csv.indexOf('"a;b ""q"""') !== -1, 'экранирование');
+});
+
 // --- проверки следующих задач добавляются выше этой строки ---
 
 if (failed) {
