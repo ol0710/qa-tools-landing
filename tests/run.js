@@ -55,6 +55,67 @@ check('скрипт выполняется без document', () => {
   loadApp();
 });
 
+// --- Задача 2: генератор и CSV ---
+const groupNames = (r) => r.items.map((i) => i.group.toLowerCase());
+
+check('форма с паролем даёт группу про пароль', () => {
+  const r = loadApp().buildChecklist('Форма входа с паролем', []);
+  assert.ok(groupNames(r).some((g) => g.includes('парол')), 'нет группы про пароль');
+  assert.strictEqual(r.usedDefault, false);
+});
+
+check('поиск по началу слова, регистр и ё/е не важны', () => {
+  const app = loadApp();
+  const hasGroup = (d, part) => groupNames(app.buildChecklist(d, [])).some((g) => g.includes(part));
+  assert.ok(hasGroup('PASSWORDS reset', 'password') || hasGroup('PASSWORDS reset', 'парол'), 'PASSWORDS');
+  assert.ok(hasGroup('Пароля нет', 'парол'), 'Пароля');
+  assert.ok(hasGroup('Паролем', 'парол'), 'Паролем');
+  assert.strictEqual(app.normalize('  ЁлкА '), 'елка');
+});
+
+check('нестандартное описание даёт общий набор', () => {
+  const r = loadApp().buildChecklist('что-то странное', []);
+  assert.strictEqual(r.usedDefault, true);
+  assert.ok(r.items.length >= 5 && r.items.length <= 8, 'пунктов: ' + r.items.length);
+  assert.ok(r.items.every((i) => i.group === 'Общие проверки'));
+});
+
+check('пустое описание ничего не выводит', () => {
+  const app = loadApp();
+  for (const d of ['', '   ']) {
+    const r = app.buildChecklist(d, []);
+    assert.strictEqual(r.items.length, 0);
+    assert.strictEqual(r.usedDefault, false);
+  }
+});
+
+check('длинное описание обрабатывается быстро', () => {
+  const app = loadApp();
+  const t = Date.now();
+  app.buildChecklist('x'.repeat(10000), []);
+  assert.ok(Date.now() - t < 200, 'медленно: ' + (Date.now() - t) + ' мс');
+});
+
+check('встроенных правил 8-12, по 4-8 проверок', () => {
+  const rules = loadApp().getRules();
+  assert.ok(rules.length >= 8 && rules.length <= 12, 'тем: ' + rules.length);
+  assert.ok(rules.every((r) => r.checks.length >= 4 && r.checks.length <= 8));
+});
+
+check('CSV: BOM, заголовок, экранирование, статус', () => {
+  const csv = loadApp().toCsv([{ group: 'А', text: 'a;b "c"' }]);
+  assert.ok(csv.startsWith('﻿№;Группа;Проверка;Статус\r\n'));
+  assert.ok(csv.includes('"a;b ""c"""'));
+  assert.ok(csv.includes('не проверено'));
+});
+
+check('CSV: опасное начало ячейки получает апостроф', () => {
+  const app = loadApp();
+  for (const s of ['=1+1', '+1', '-1', '@x']) {
+    assert.ok(app.toCsv([{ group: 'А', text: s }]).includes("'" + s), s);
+  }
+});
+
 // --- проверки следующих задач добавляются выше этой строки ---
 
 if (failed) {
