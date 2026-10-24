@@ -126,6 +126,57 @@ check('блок про боль: есть текст, нет обещаний п
   assert.ok(!/нейросет|искусственн/i.test(t), 'нейросеть/искусственный');
 });
 
+// --- Задача 4: свои правила, «скоро», подвал ---
+check('parseRuleInput: ключи, проверки, группа', () => {
+  const r = loadApp().parseRuleInput('Пароль, password', 'a\n\nb');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { keys: ['пароль', 'password'], group: 'пароль', checks: ['a', 'b'] });
+});
+
+check('parseRuleInput: без ключей или без проверок даёт null', () => {
+  const app = loadApp();
+  assert.strictEqual(app.parseRuleInput('', 'a'), null);
+  assert.strictEqual(app.parseRuleInput('x', '  \n '), null);
+});
+
+check('loadCustomRules: повреждённые данные и исключения дают []', () => {
+  const app = loadApp();
+  assert.deepStrictEqual(Array.from(app.loadCustomRules({ getItem: () => '{не json' })), []);
+  assert.deepStrictEqual(Array.from(app.loadCustomRules({ getItem() { throw new Error('x'); } })), []);
+  assert.deepStrictEqual(Array.from(app.loadCustomRules({ getItem: () => null })), []);
+  assert.deepStrictEqual(Array.from(app.loadCustomRules({ getItem: () => '{"a":1}' })), []);
+});
+
+check('save/load правил: круг и сбой записи', () => {
+  const app = loadApp();
+  const store = {};
+  const storage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } };
+  const rule = app.parseRuleInput('склад', 'Проверить остаток');
+  assert.strictEqual(app.saveCustomRules([rule], storage), true);
+  assert.strictEqual(app.loadCustomRules(storage)[0].group, 'склад');
+  assert.strictEqual(app.saveCustomRules([], { setItem() { throw new Error('x'); } }), false);
+});
+
+check('своё правило срабатывает в buildChecklist', () => {
+  const app = loadApp();
+  const r = app.buildChecklist('Склад: приёмка', [app.parseRuleInput('склад', 'Проверить остаток')]);
+  assert.ok(r.items.some((i) => i.group === 'склад' && i.text === 'Проверить остаток'));
+  assert.strictEqual(r.usedDefault, false);
+});
+
+check('«скоро»: две карточки без ссылок', () => {
+  const sec = readHtml().match(/<section[^>]*id="soon"[\s\S]*?<\/section>/)[0];
+  assert.strictEqual((sec.match(/class="card"/g) || []).length, 2);
+  assert.ok(!/href/i.test(sec), 'есть href');
+  assert.ok(/баг-репорт/i.test(sec) && /покрыти/i.test(sec));
+});
+
+check('секция правил и подвал заполнены, без заглушек', () => {
+  assert.ok(!sectionText('rules').includes('Заглушка'));
+  assert.ok(!sectionText('soon').includes('Заглушка'));
+  assert.ok(readHtml().includes('только в этом браузере'));
+  assert.ok(/<footer id="footer">[\s\S]*?\S[\s\S]*?<\/footer>/.test(readHtml()));
+});
+
 // --- проверки следующих задач добавляются выше этой строки ---
 
 if (failed) {
