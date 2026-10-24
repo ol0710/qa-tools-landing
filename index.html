@@ -65,7 +65,7 @@ button.primary {
   width: 100%;
   margin-top: 12px;
 }
-button[hidden] { display: none; }
+[hidden] { display: none !important; }
 #hint { min-height: 1.5em; margin: 8px 0 0; color: var(--muted); }
 #result { text-align: left; margin-top: 16px; }
 #result ul { list-style: none; margin: 0; padding: 0; }
@@ -524,6 +524,13 @@ function setBugResultVisible(visible) {
   });
 }
 
+// Любая правка формы делает результат устаревшим: скрываем и очищаем его.
+function resetBugResult() {
+  setBugResultVisible(false);
+  document.getElementById('bug-result').value = '';
+  document.getElementById('bug-hint').textContent = '';
+}
+
 function onBugBuild() {
   var f = readBugForm();
   var hint = document.getElementById('bug-hint');
@@ -560,6 +567,11 @@ if (typeof document !== 'undefined') {
   document.getElementById('rule-add').addEventListener('click', onAddRule);
   document.getElementById('build').addEventListener('click', onBuild);
   document.getElementById('csv').addEventListener('click', function () { downloadCsv(currentItems); });
+  ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', resetBugResult);
+    el.addEventListener('change', resetBugResult);
+  });
   document.getElementById('bug-build').addEventListener('click', onBugBuild);
   document.getElementById('bug-copy').addEventListener('click', onBugCopy);
   document.getElementById('bug-csv').addEventListener('click', function () {

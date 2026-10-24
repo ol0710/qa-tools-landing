@@ -309,6 +309,20 @@ check('нет блока «Скоро»', () => {
   assert.ok(!html.includes('class="card"'));
 });
 
+check('глобальное правило [hidden] скрывает элементы', () => {
+  assert.ok(/(^|\n)\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/.test(readHtml()));
+});
+
+check('изменение любого поля баг-репорта сбрасывает результат', () => {
+  const html = readHtml();
+  assert.ok(html.includes('function resetBugResult'), 'нет resetBugResult');
+  for (const id of ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity']) {
+    assert.ok(html.includes("'" + id + "'"), 'нет ' + id + ' в скрипте');
+  }
+  assert.ok(/addEventListener\('input', resetBugResult\)/.test(html), 'нет input-обработчика');
+  assert.ok(/addEventListener\('change', resetBugResult\)/.test(html), 'нет change-обработчика');
+});
+
 check('баг-репорт не использует innerHTML', () => {
   assert.ok(!readHtml().includes('innerHTML'));
 });
