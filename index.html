@@ -71,8 +71,21 @@ button.primary {
 #result { text-align: left; margin-top: 16px; }
 #result ul { list-style: none; margin: 0; padding: 0; }
 #result li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-#result li::before { content: "\2610\00a0"; color: var(--muted); }
+#result li::before, #sprint-result li::before { content: "\2610\00a0"; color: var(--muted); }
 #csv { margin-top: 16px; }
+h4 { font-size: 0.95rem; margin: 12px 0 6px; color: var(--muted); }
+#sprint textarea { margin-bottom: 8px; }
+#sprint-example { width: 100%; margin-top: 8px; }
+#sprint-result ul { list-style: none; margin: 0; padding: 0; }
+#sprint-result li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.feature { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.feature h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--text); }
+.feature textarea { min-height: 90px; }
+.feature .no-rules { color: #fbbf24; font-weight: 600; }
+#sprint-facts { margin-top: 16px; }
+#sprint-facts p { margin: 0 0 4px; }
+#sprint-csv { margin-top: 12px; }
+#sprint-warning { color: #fbbf24; font-size: 0.9rem; }
 
 input[type="text"] {
   display: block;
@@ -130,6 +143,24 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <p id="hint" role="status"></p>
     <div id="result"></div>
     <button id="csv" type="button" hidden>Скачать для Excel (.csv)</button>
+  </section>
+  <section id="sprint">
+    <h2>Соберите пакет проверок на весь спринт</h2>
+    <p>Впишите фичи спринта, по одной в строке, и получите чек-лист по каждой. Если для фичи нет правил, добавьте свои проверки прямо под ней.</p>
+    <label class="field" for="sprint-input">Фичи спринта</label>
+    <textarea id="sprint-input" placeholder="Приёмка товара&#10;Возврат&#10;Оплата картой"></textarea>
+    <p class="note">Список можно вставить из таблицы (Excel, Jira): одна фича в строке. Учитываются первые 10 фич.</p>
+    <button id="sprint-build" class="primary" type="button">Собрать пакет</button>
+    <button id="sprint-example" type="button">Показать на примере</button>
+    <p class="note">Пример подставится вместо текста в поле. Чтобы увидеть пример заново, удалите добавленное правило в разделе «Свои правила».</p>
+    <p id="sprint-hint" class="note" role="status"></p>
+    <div id="sprint-result"></div>
+    <div id="sprint-facts" role="status" hidden>
+      <p id="sprint-facts-main"></p>
+      <p id="sprint-facts-norules" class="note" hidden></p>
+    </div>
+    <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
+    <p id="sprint-warning" role="status" hidden></p>
   </section>
   <section id="bug">
     <h2>Баг-репорт для Jira и Excel</h2>
@@ -298,6 +329,35 @@ function getRules() {
       'Текст и тема без ошибок и пустых подстановок',
       'Отключение уведомлений',
       'Поведение при недоступной почте или сети'
+    ] },
+    { keys: ['количеств*', 'quantity', 'остатк*', 'остаток', 'stock'], group: 'Количество и остатки', checks: [
+      'Нулевое, отрицательное и дробное количество',
+      'Максимально допустимое количество',
+      'Остаток пересчитывается после каждой операции',
+      'Остаток не уходит в минус',
+      'Одновременное изменение количества двумя пользователями'
+    ] },
+    { keys: ['статус*', 'status*'], group: 'Статусы документов', checks: [
+      'Допустимые переходы между статусами',
+      'Недопустимый переход блокируется с понятным сообщением',
+      'Редактирование документа в каждом статусе',
+      'Статус и дата изменения видны в списке и в карточке',
+      'Повторная смена статуса (двойной клик) не создаёт дубль'
+    ] },
+    { keys: ['роль', 'роли', 'ролей', 'ролям', 'ролями', 'role*', 'права доступа', 'прав доступа', 'permission*', 'админист*'], group: 'Права доступа и роли', checks: [
+      'Действия, доступные каждой роли',
+      'Недоступное действие скрыто или заблокировано, а не просто не работает',
+      'Прямой переход по ссылке на закрытую страницу',
+      'Смена роли применяется без перезахода или с понятным уведомлением',
+      'Пользователь без ролей'
+    ] },
+    { keys: ['импорт*', 'экспорт*', 'import*', 'export*'], group: 'Импорт и экспорт', checks: [
+      'Файл с верной структурой и пустой файл',
+      'Неверные столбцы, лишние и пропущенные поля',
+      'Кодировка и русские буквы, разделитель',
+      'Большой объём данных',
+      'Повторный импорт тех же данных не создаёт дублей',
+      'Экспортированный файл открывается в Excel'
     ] }
   ];
 }
@@ -309,23 +369,26 @@ function matchRules(description, rules) {
   });
 }
 
-function buildChecklist(description, customRules) {
-  if (!normalize(description)) return { items: [], usedDefault: false };
-  var matched = matchRules(description, getRules().concat(customRules || []));
+// Проверки найденных правил без повторов, в порядке правил.
+function collectItems(matched) {
   var seen = Object.create(null);
   var items = [];
-  function add(group, text) {
-    var k = group + '\u0000' + text;
-    if (seen[k]) return;
-    seen[k] = true;
-    items.push({ group: group, text: text });
-  }
   matched.forEach(function (rule) {
-    rule.checks.forEach(function (c) { add(rule.group, c); });
+    rule.checks.forEach(function (text) {
+      var k = rule.group + '\u0000' + text;
+      if (seen[k]) return;
+      seen[k] = true;
+      items.push({ group: rule.group, text: text });
+    });
   });
+  return items;
+}
+
+function buildChecklist(description, customRules) {
+  if (!normalize(description)) return { items: [], usedDefault: false };
+  var items = collectItems(matchRules(description, getRules().concat(customRules || [])));
   if (items.length === 0) {
-    DEFAULT_CHECKS.forEach(function (c) { add(DEFAULT_GROUP, c); });
-    return { items: items, usedDefault: true };
+    return { items: DEFAULT_CHECKS.map(function (c) { return { group: DEFAULT_GROUP, text: c }; }), usedDefault: true };
   }
   return { items: items, usedDefault: false };
 }
@@ -379,7 +442,98 @@ function parseRuleInput(keysText, checksText) {
   var keys = String(keysText).split(',').map(normalize).filter(Boolean);
   var checks = String(checksText).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
   if (keys.length === 0 || checks.length === 0) return null;
-  return { keys: keys, group: keys[0], checks: checks };
+  var title = keys[0].replace(/\*+$/, '').trim() || keys[0];
+  return { keys: keys, group: title.charAt(0).toUpperCase() + title.slice(1), checks: checks };
+}
+
+// ---- Пакет проверок на спринт ----
+var SPRINT_MAX_FEATURES = 10;
+var SPRINT_MAX_LENGTH = 120;
+var SPRINT_EXAMPLE = [
+  'Поиск товара по названию и артикулу',
+  'Списание остатков со склада',
+  'Статус накладной',
+  'Инвентаризация склада'
+].join('\n');
+var STOP_WORDS = ['через', 'после', 'перед', 'между', 'около', 'среди', 'вместо', 'кроме', 'чтобы', 'потому',
+  'если', 'когда', 'либо', 'также', 'тоже', 'хотя', 'пока', 'будто', 'словно',
+  'with', 'from', 'into', 'onto', 'over', 'than', 'that', 'this'];
+
+function ruPlural(n, one, few, many) {
+  var m100 = n % 100;
+  var m10 = n % 10;
+  if (m100 >= 11 && m100 <= 14) return many;
+  if (m10 === 1) return one;
+  if (m10 >= 2 && m10 <= 4) return few;
+  return many;
+}
+
+// Строки поля в список фич: без пустых и повторов, не длиннее 120 знаков, не больше 10 штук.
+function parseSprintFeatures(text) {
+  var seen = Object.create(null);
+  var names = [];
+  String(text).split(/\r?\n/).forEach(function (line) {
+    var name = line.replace(/\s+/g, ' ').trim().slice(0, SPRINT_MAX_LENGTH).trim();
+    if (!name) return;
+    var key = normalize(name);
+    if (seen[key]) return;
+    seen[key] = true;
+    names.push(name);
+  });
+  return { features: names.slice(0, SPRINT_MAX_FEATURES), skipped: Math.max(0, names.length - SPRINT_MAX_FEATURES) };
+}
+
+// Ключи для формы под фичей: слова названия от 4 букв без предлогов и союзов, основа + «*».
+function suggestRuleKeys(name) {
+  var seen = Object.create(null);
+  var keys = [];
+  tokenize(name).forEach(function (w) {
+    if (w.length < 4 || !/^[a-zа-я]+$/.test(w) || STOP_WORDS.indexOf(w) >= 0) return;
+    var stem = w.length >= 5 ? w.replace(/[аяуюыиеоьй]$/, '') : w;
+    if (seen[stem]) return;
+    seen[stem] = true;
+    keys.push(stem + '*');
+  });
+  return keys.join(', ');
+}
+
+// Общего набора здесь нет: фича без правил остаётся без проверок.
+function buildSprintPack(features, customRules) {
+  var rules = getRules().concat(customRules || []);
+  return features.map(function (name) {
+    var items = collectItems(matchRules(name, rules));
+    return { name: name, items: items, recognized: items.length > 0 };
+  });
+}
+
+// Правило для фичи: сохраняется, только если действительно срабатывает на её название.
+function makeRuleForFeature(name, keysText, checksText) {
+  var rule = parseRuleInput(keysText, checksText);
+  if (!rule) return { error: 'empty' };
+  if (matchRules(name, [rule]).length === 0) return { error: 'nomatch' };
+  return { rule: rule };
+}
+
+function sprintStats(pack) {
+  var stats = { features: 0, checks: 0, withoutRules: 0 };
+  pack.forEach(function (f) {
+    if (f.recognized) { stats.features++; stats.checks += f.items.length; }
+    else stats.withoutRules++;
+  });
+  return stats;
+}
+
+function sprintPackToCsv(pack) {
+  var lines = ['№;Фича;Группа;Проверка;Статус'];
+  var n = 0;
+  pack.forEach(function (f) {
+    if (!f.recognized) return;
+    f.items.forEach(function (it) {
+      n++;
+      lines.push([n, csvCell(f.name), csvCell(it.group), csvCell(it.text), 'не проверено'].join(';'));
+    });
+  });
+  return '﻿' + lines.join('\r\n') + '\r\n';
 }
 
 function defaultStorage() {
@@ -414,7 +568,7 @@ function saveCustomRules(rules, storage) {
 }
 
 // ---- DOM-обвязка ----
-function renderResult(container, items) {
+function renderResult(container, items, headingTag) {
   container.textContent = '';
   var groups = [];
   var byGroup = Object.create(null);
@@ -423,7 +577,7 @@ function renderResult(container, items) {
     byGroup[it.group].push(it.text);
   });
   groups.forEach(function (g) {
-    var h = document.createElement('h3');
+    var h = document.createElement(headingTag || 'h3');
     h.textContent = g;
     var ul = document.createElement('ul');
     byGroup[g].forEach(function (t) {
@@ -459,9 +613,11 @@ var warned = false;
 function persistRules() {
   if (!saveCustomRules(customRules) && !warned) {
     warned = true;
-    var w = document.getElementById('rules-warning');
-    w.textContent = 'Браузер не даёт сохранять данные: правила работают, пока страница открыта.';
-    w.hidden = false;
+    ['rules-warning', 'sprint-warning'].forEach(function (id) {
+      var w = document.getElementById(id);
+      w.textContent = 'Браузер не даёт сохранять данные: правила работают, пока страница открыта.';
+      w.hidden = false;
+    });
   }
 }
 
@@ -512,6 +668,127 @@ function onBuild() {
   if (currentItems.length === 0) hint.textContent = 'Опишите фичу';
   else if (result.usedDefault) hint.textContent = 'Нет подходящих ключевых слов, показан общий набор';
   else hint.textContent = '';
+}
+
+var sprintPack = [];
+
+function resetSprintResult() {
+  sprintPack = [];
+  document.getElementById('sprint-result').textContent = '';
+  document.getElementById('sprint-facts').hidden = true;
+  document.getElementById('sprint-csv').hidden = true;
+  document.getElementById('sprint-hint').textContent = '';
+}
+
+function renderSprintSummary() {
+  var stats = sprintStats(sprintPack);
+  var main = document.getElementById('sprint-facts-main');
+  var noRules = document.getElementById('sprint-facts-norules');
+  if (stats.features === 0) {
+    main.textContent = 'Ни для одной фичи нет правил. Добавьте проверки выше';
+    noRules.hidden = true;
+  } else {
+    main.textContent = stats.features + ' ' + ruPlural(stats.features, 'фича', 'фичи', 'фич') + ', ' +
+      stats.checks + ' ' + ruPlural(stats.checks, 'проверка', 'проверки', 'проверок');
+    noRules.textContent = 'Без правил: ' + stats.withoutRules;
+    noRules.hidden = stats.withoutRules === 0;
+  }
+  document.getElementById('sprint-facts').hidden = false;
+  document.getElementById('sprint-csv').hidden = stats.features === 0;
+}
+
+function renderSprintFeature(i) {
+  var feature = sprintPack[i];
+  var box = document.getElementById('sprint-feature-' + i);
+  box.textContent = '';
+  var h = document.createElement('h3');
+  h.textContent = feature.name;
+  box.appendChild(h);
+  if (feature.recognized) {
+    var body = document.createElement('div');
+    renderResult(body, feature.items, 'h4');
+    box.appendChild(body);
+    return;
+  }
+  var warn = document.createElement('p');
+  warn.className = 'no-rules';
+  warn.textContent = 'Для этой фичи нет правил';
+  box.appendChild(warn);
+
+  function field(tag, id, labelText, value) {
+    var label = document.createElement('label');
+    label.className = 'field';
+    label.htmlFor = id;
+    label.textContent = labelText;
+    var el = document.createElement(tag);
+    el.id = id;
+    if (tag === 'input') el.type = 'text';
+    el.value = value;
+    box.appendChild(label);
+    box.appendChild(el);
+    return el;
+  }
+  var keys = field('input', 'sprint-keys-' + i, 'Ключевые слова через запятую', suggestRuleKeys(feature.name));
+  var checks = field('textarea', 'sprint-checks-' + i, 'Проверки, по одной на строку', '');
+  var add = document.createElement('button');
+  add.type = 'button';
+  add.textContent = 'Добавить';
+  var hint = document.createElement('p');
+  hint.className = 'note';
+  hint.setAttribute('role', 'status');
+  add.addEventListener('click', function () {
+    var res = makeRuleForFeature(feature.name, keys.value, checks.value);
+    if (res.error === 'empty') { hint.textContent = 'Нужны хотя бы одно ключевое слово и одна проверка'; return; }
+    if (res.error === 'nomatch') { hint.textContent = 'Эти слова не совпадают с названием фичи'; return; }
+    customRules.push(res.rule);
+    persistRules();
+    renderRules();
+    refreshSprintAfterRule();
+  });
+  box.appendChild(add);
+  box.appendChild(hint);
+}
+
+// Правила общие: пересчитываем данные всех фич, но перерисовываем только изменившиеся,
+// чтобы не стереть набранное в формах других фич без правил.
+function refreshSprintAfterRule() {
+  var fresh = buildSprintPack(sprintPack.map(function (f) { return f.name; }), customRules);
+  fresh.forEach(function (f, i) {
+    var old = sprintPack[i];
+    var changed = f.recognized !== old.recognized || f.items.length !== old.items.length;
+    sprintPack[i] = f;
+    if (changed) renderSprintFeature(i);
+  });
+  renderSprintSummary();
+}
+
+function onSprintBuild() {
+  resetSprintResult();
+  var hint = document.getElementById('sprint-hint');
+  var parsed = parseSprintFeatures(document.getElementById('sprint-input').value);
+  if (parsed.features.length === 0) {
+    hint.textContent = 'Впишите хотя бы одну фичу';
+    return;
+  }
+  if (parsed.skipped > 0) {
+    hint.textContent = 'В пакет вошли первые ' + SPRINT_MAX_FEATURES + ' фич, пропущено ' + parsed.skipped + ' ' +
+      ruPlural(parsed.skipped, 'строка', 'строки', 'строк');
+  }
+  sprintPack = buildSprintPack(parsed.features, customRules);
+  var container = document.getElementById('sprint-result');
+  sprintPack.forEach(function (f, i) {
+    var box = document.createElement('div');
+    box.className = 'feature';
+    box.id = 'sprint-feature-' + i;
+    container.appendChild(box);
+    renderSprintFeature(i);
+  });
+  renderSprintSummary();
+}
+
+function onSprintExample() {
+  document.getElementById('sprint-input').value = SPRINT_EXAMPLE;
+  onSprintBuild();
 }
 
 function readBugForm() {
@@ -568,6 +845,12 @@ if (typeof document !== 'undefined') {
   renderRules();
   document.getElementById('rule-add').addEventListener('click', onAddRule);
   document.getElementById('build').addEventListener('click', onBuild);
+  document.getElementById('sprint-build').addEventListener('click', onSprintBuild);
+  document.getElementById('sprint-example').addEventListener('click', onSprintExample);
+  document.getElementById('sprint-input').addEventListener('input', resetSprintResult);
+  document.getElementById('sprint-csv').addEventListener('click', function () {
+    downloadText('sprint-pack.csv', sprintPackToCsv(sprintPack));
+  });
   document.getElementById('csv').addEventListener('click', function () { downloadCsv(currentItems); });
   ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity'].forEach(function (id) {
     var el = document.getElementById(id);

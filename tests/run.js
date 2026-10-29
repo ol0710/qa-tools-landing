@@ -96,9 +96,9 @@ check('длинное описание обрабатывается быстро
   assert.ok(Date.now() - t < 200, 'медленно: ' + (Date.now() - t) + ' мс');
 });
 
-check('встроенных правил 8-12, по 4-8 проверок', () => {
+check('встроенных правил 8-14, по 4-8 проверок', () => {
   const rules = loadApp().getRules();
-  assert.ok(rules.length >= 8 && rules.length <= 12, 'тем: ' + rules.length);
+  assert.ok(rules.length >= 8 && rules.length <= 14, 'тем: ' + rules.length);
   assert.ok(rules.every((r) => r.checks.length >= 4 && r.checks.length <= 8));
 });
 
@@ -129,7 +129,7 @@ check('блок про боль: есть текст, нет обещаний п
 // --- Задача 4: свои правила, «скоро», подвал ---
 check('parseRuleInput: ключи, проверки, группа', () => {
   const r = loadApp().parseRuleInput('Пароль, password', 'a\n\nb');
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { keys: ['пароль', 'password'], group: 'пароль', checks: ['a', 'b'] });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { keys: ['пароль', 'password'], group: 'Пароль', checks: ['a', 'b'] });
 });
 
 check('parseRuleInput: без ключей или без проверок даёт null', () => {
@@ -152,14 +152,14 @@ check('save/load правил: круг и сбой записи', () => {
   const storage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } };
   const rule = app.parseRuleInput('склад', 'Проверить остаток');
   assert.strictEqual(app.saveCustomRules([rule], storage), true);
-  assert.strictEqual(app.loadCustomRules(storage)[0].group, 'склад');
+  assert.strictEqual(app.loadCustomRules(storage)[0].group, 'Склад');
   assert.strictEqual(app.saveCustomRules([], { setItem() { throw new Error('x'); } }), false);
 });
 
 check('своё правило срабатывает в buildChecklist', () => {
   const app = loadApp();
   const r = app.buildChecklist('Склад: приёмка', [app.parseRuleInput('склад', 'Проверить остаток')]);
-  assert.ok(r.items.some((i) => i.group === 'склад' && i.text === 'Проверить остаток'));
+  assert.ok(r.items.some((i) => i.group === 'Склад' && i.text === 'Проверить остаток'));
   assert.strictEqual(r.usedDefault, false);
 });
 
@@ -223,7 +223,7 @@ check('ключ constructor не роняет отрисовку', () => {
   app.document = { createElement: fake };
   const container = fake();
   const items = app.buildChecklist('constructor page', [app.parseRuleInput('constructor', 'Проверка')]).items;
-  assert.ok(items.some((i) => i.group === 'constructor'));
+  assert.ok(items.some((i) => i.group === 'Constructor'));
   vm.runInContext('renderResult', app); // функция доступна
   app.renderResult(container, items);
   assert.ok(container.children.length >= 2);
