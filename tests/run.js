@@ -132,6 +132,13 @@ check('parseRuleInput: ключи, проверки, группа', () => {
   assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { keys: ['пароль', 'password'], group: 'Пароль', checks: ['a', 'b'] });
 });
 
+check('parseRuleInput: группа без звёздочки и с заглавной буквы', () => {
+  const app = loadApp();
+  assert.strictEqual(app.parseRuleInput('склад*', 'a').group, 'Склад');
+  assert.strictEqual(app.parseRuleInput('  оплат* , payment', 'a').group, 'Оплат');
+  assert.strictEqual(app.parseRuleInput('склад*', 'a').keys[0], 'склад*');
+});
+
 check('parseRuleInput: без ключей или без проверок даёт null', () => {
   const app = loadApp();
   assert.strictEqual(app.parseRuleInput('', 'a'), null);
