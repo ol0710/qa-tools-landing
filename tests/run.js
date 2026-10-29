@@ -102,6 +102,48 @@ check('встроенных правил 8-14, по 4-8 проверок', () =>
   assert.ok(rules.every((r) => r.checks.length >= 4 && r.checks.length <= 8));
 });
 
+check('новые встроенные правила срабатывают по ключевым словам', () => {
+  const app = loadApp();
+  const cases = [
+    ['Списание остатков со склада', 'Количество и остатки'],
+    ['Максимальное quantity в заказе', 'Количество и остатки'],
+    ['Смена статуса накладной', 'Статусы документов'],
+    ['Права доступа менеджера', 'Права доступа и роли'],
+    ['Новая роль администратора', 'Права доступа и роли'],
+    ['Импорт товаров из Excel', 'Импорт и экспорт'],
+    ['Export отчёта', 'Импорт и экспорт']
+  ];
+  for (const [text, group] of cases) {
+    const r = app.buildChecklist(text, []);
+    assert.strictEqual(r.usedDefault, false, text);
+    assert.ok(r.items.some((i) => i.group === group), text + ' -> ' + group);
+  }
+});
+
+check('новые правила не ломают прежние темы', () => {
+  const app = loadApp();
+  const newGroups = ['Количество и остатки', 'Статусы документов', 'Права доступа и роли', 'Импорт и экспорт'];
+  const cases = [
+    ['Пароль при входе', ['Пароль', 'Авторизация']],
+    ['Оплата картой', ['Оплата']],
+    ['Поиск и фильтры в таблице', ['Поиск и фильтры', 'Списки и таблицы']],
+    ['Загрузка файла', ['Загрузка файла']]
+  ];
+  for (const [text, groups] of cases) {
+    const got = app.buildChecklist(text, []).items.map((i) => i.group);
+    for (const g of groups) assert.ok(got.includes(g), text + ' -> ' + g);
+    assert.ok(!got.some((g) => newGroups.includes(g)), 'лишняя тема: ' + text);
+  }
+});
+
+check('четвёртая фича примера не распознаётся ни одним встроенным правилом', () => {
+  const app = loadApp();
+  const features = app.SPRINT_EXAMPLE.split('\n');
+  assert.strictEqual(features.length, 4);
+  for (let i = 0; i < 3; i++) assert.ok(app.matchRules(features[i], app.getRules()).length > 0, features[i]);
+  assert.strictEqual(app.matchRules(features[3], app.getRules()).length, 0, features[3]);
+});
+
 check('CSV: BOM, заголовок, экранирование, статус', () => {
   const csv = loadApp().toCsv([{ group: 'А', text: 'a;b "c"' }]);
   assert.ok(csv.startsWith('﻿№;Группа;Проверка;Статус\r\n'));
