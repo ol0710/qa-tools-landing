@@ -89,6 +89,10 @@ h4 { font-size: 0.95rem; margin: 12px 0 6px; color: var(--muted); }
 .check-text { flex: 1 1 220px; }
 #sprint-report { margin-top: 24px; }
 #sprint-report h3 { margin: 0 0 8px; color: var(--text); font-size: 1.05rem; }
+#report-norules { margin-top: 12px; color: #fbbf24; }
+#report-comments { list-style: none; margin: 0; padding: 0; }
+#report-comments li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+#report-comments .comment-text { display: block; margin-top: 2px; color: var(--muted); font-style: italic; white-space: pre-wrap; }
 #report-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 #report-table th, #report-table td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border); }
 #report-table th:first-child, #report-table td:first-child { text-align: left; overflow-wrap: anywhere; }
@@ -214,11 +218,17 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     </div>
     <div id="sprint-report" hidden>
       <h3>Отчёт по качеству</h3>
+      <p id="report-hint" class="note">Отметьте результаты проверок, и здесь появится отчёт.</p>
       <p id="report-total"></p>
       <table id="report-table">
         <thead><tr><th>Фича</th><th>Прошли</th><th>Упали</th><th>Заблокированы</th><th>Пропущены</th><th>Не проверены</th><th>Готовность</th></tr></thead>
         <tbody></tbody>
       </table>
+      <p id="report-norules" class="note" hidden></p>
+      <div id="report-comments-box" hidden>
+        <h4>Комментарии</h4>
+        <ul id="report-comments"></ul>
+      </div>
     </div>
     <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
     <p id="sprint-warning" role="status" hidden></p>
@@ -691,19 +701,29 @@ function sprintReport(pack, marks) {
   }
   var all = blank('Итого');
   var rows = [];
+  var comments = [];
+  var noRules = [];
   pack.forEach(function (f) {
-    if (!f.recognized) return;
+    if (!f.recognized) { noRules.push(f.name); return; }
     var row = blank(f.name);
     f.items.forEach(function (it) {
       var s = getMark(marks, f.name, it.group, it.text);
       row.total++; row[s]++;
       all.total++; all[s]++;
+      var comment = getComment(marks, f.name, it.group, it.text);
+      if (comment.trim()) comments.push({ feature: f.name, status: sprintStatus(s).label, check: it.text, comment: comment });
     });
     row.ready = readiness(row);
     rows.push(row);
   });
   all.ready = readiness(all);
-  return { features: rows, total: all };
+  return {
+    features: rows,
+    total: all,
+    comments: comments,
+    noRules: noRules,
+    touched: all.notrun < all.total || comments.length > 0
+  };
 }
 
 function sprintPackToCsv(pack, marks) {
@@ -899,6 +919,31 @@ function renderSprintReport() {
     cell('Готовность', formatReadiness(row.ready));
     body.appendChild(tr);
   });
+
+  document.getElementById('report-hint').hidden = report.touched;
+
+  var noRules = document.getElementById('report-norules');
+  if (report.noRules.length > 0) {
+    var n = report.noRules.length;
+    noRules.textContent = 'Не вошло в отчёт: ' + n + ' ' + ruPlural(n, 'фича', 'фичи', 'фич') +
+      ' без правил (' + report.noRules.join('; ') + ')';
+  }
+  noRules.hidden = report.noRules.length === 0;
+
+  var list = document.getElementById('report-comments');
+  list.textContent = '';
+  report.comments.forEach(function (c) {
+    var li = document.createElement('li');
+    var head = document.createElement('span');
+    head.textContent = c.feature + ' · ' + c.status + ': ' + c.check;
+    var text = document.createElement('span');
+    text.className = 'comment-text';
+    text.textContent = c.comment;
+    li.appendChild(head);
+    li.appendChild(text);
+    list.appendChild(li);
+  });
+  document.getElementById('report-comments-box').hidden = report.comments.length === 0;
   box.hidden = false;
 }
 
@@ -942,6 +987,7 @@ function buildCommentControls(feature, it) {
     setComment(sprintMarks, feature.name, it.group, it.text, field.value);
     persistSprint();
     refresh();
+    renderSprintReport();
   });
   box.appendChild(field);
   box.appendChild(preview);
