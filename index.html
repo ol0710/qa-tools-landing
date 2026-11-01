@@ -121,7 +121,7 @@ button.status[data-status="blocked"] { color: #fbbf24; border-color: #d97706; }
 .feature .no-rules { color: #fbbf24; font-weight: 600; }
 #sprint-facts { margin-top: 16px; }
 #sprint-facts p { margin: 0 0 4px; }
-#sprint-csv { margin-top: 12px; }
+#sprint-csv, #sprint-report-csv { margin-top: 12px; margin-right: 8px; }
 #sprint-warning { color: #fbbf24; font-size: 0.9rem; }
 
 input[type="text"] {
@@ -204,6 +204,8 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
   <section id="sprint">
     <h2>Соберите пакет проверок на весь спринт</h2>
     <p>Впишите фичи спринта, по одной в строке, и получите чек-лист по каждой. Если для фичи нет правил, добавьте свои проверки прямо под ней.</p>
+    <label class="field" for="sprint-name">Название спринта (необязательно)</label>
+    <input type="text" id="sprint-name" maxlength="80" placeholder="Спринт 12">
     <label class="field" for="sprint-input">Фичи спринта</label>
     <textarea id="sprint-input" placeholder="Приёмка товара&#10;Возврат&#10;Оплата картой"></textarea>
     <p class="note">Список можно вставить из таблицы (Excel, Jira): одна фича в строке. Учитываются первые 10 фич.</p>
@@ -231,6 +233,7 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
       </div>
     </div>
     <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
+    <button id="sprint-report-csv" type="button" hidden>Скачать отчёт для Excel (.csv)</button>
     <p id="sprint-warning" role="status" hidden></p>
   </section>
   <section id="bug">
@@ -604,6 +607,7 @@ function markKey(group, text) {
 }
 
 var SPRINT_COMMENT_MAX = 500;
+var SPRINT_NAME_MAX = 80;
 
 function getMark(marks, feature, group, text) {
   var byFeature = marks[normalize(feature)];
@@ -643,7 +647,7 @@ function setComment(marks, feature, group, text, comment) {
 }
 
 function loadSprintState(storage) {
-  var state = { input: '', marks: Object.create(null) };
+  var state = { input: '', name: '', marks: Object.create(null) };
   try {
     var st = storage || defaultStorage();
     if (!st) return state;
@@ -652,6 +656,7 @@ function loadSprintState(storage) {
     var data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return state;
     if (typeof data.input === 'string') state.input = data.input;
+    if (typeof data.name === 'string') state.name = data.name.slice(0, SPRINT_NAME_MAX);
     if (data.marks && typeof data.marks === 'object') {
       Object.keys(data.marks).forEach(function (fk) {
         var byFeature = data.marks[fk];
@@ -669,7 +674,7 @@ function loadSprintState(storage) {
     }
     return state;
   } catch (e) {
-    return { input: '', marks: Object.create(null) };
+    return { input: '', name: '', marks: Object.create(null) };
   }
 }
 
@@ -677,7 +682,7 @@ function saveSprintState(state, storage) {
   try {
     var st = storage || defaultStorage();
     if (!st) return false;
-    st.setItem(SPRINT_KEY, JSON.stringify({ input: state.input, marks: state.marks }));
+    st.setItem(SPRINT_KEY, JSON.stringify({ input: state.input, name: state.name, marks: state.marks }));
     return true;
   } catch (e) {
     return false;
@@ -724,6 +729,44 @@ function sprintReport(pack, marks) {
     noRules: noRules,
     touched: all.notrun < all.total || comments.length > 0
   };
+}
+
+function noRulesLine(names) {
+  var n = names.length;
+  return 'Не вошло в отчёт: ' + n + ' ' + ruPlural(n, 'фича', 'фичи', 'фич') + ' без правил (' + names.join('; ') + ')';
+}
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+function dateRu(d) { return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear(); }
+function dateIso(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+
+// Отчёт для Excel: название спринта и дата, пустая строка, таблица по фичам, «Итого», фичи без правил.
+// Цифры те же, что на странице: считает общая sprintReport.
+function sprintReportToCsv(pack, marks, name, now) {
+  var report = sprintReport(pack, marks || {});
+  var lines = [
+    csvCell('Спринт: ' + (String(name).trim() || 'без названия')),
+    csvCell('Дата: ' + dateRu(now)),
+    '',
+    ['Фича'].concat(REPORT_COLUMNS.map(function (c) { return c[1]; }), ['Готовность']).map(csvCell).join(';')
+  ];
+  report.features.concat([report.total]).forEach(function (row) {
+    lines.push([csvCell(row.name)].concat(
+      REPORT_COLUMNS.map(function (c) { return row[c[0]]; }),
+      [formatReadiness(row.ready)]
+    ).join(';'));
+  });
+  if (report.noRules.length > 0) {
+    lines.push('');
+    lines.push(csvCell(noRulesLine(report.noRules)));
+  }
+  return '﻿' + lines.join('\r\n') + '\r\n';
+}
+
+// Имя файла: report-<название спринта>-<дата>.csv; в названии только буквы, цифры, дефис и подчёркивание.
+function reportFileName(name, now) {
+  var slug = String(name).trim().replace(/\s+/g, '-').replace(/[^a-zA-Zа-яА-ЯёЁ0-9_-]/g, '').slice(0, 40);
+  return 'report-' + (slug ? slug + '-' : '') + dateIso(now) + '.csv';
 }
 
 function sprintPackToCsv(pack, marks) {
@@ -879,10 +922,11 @@ function onBuild() {
 var sprintPack = [];
 var sprintMarks = Object.create(null);
 var sprintSavedInput = '';
+var sprintName = '';
 var sprintWarned = false;
 
 function persistSprint() {
-  if (!saveSprintState({ input: sprintSavedInput, marks: sprintMarks }) && !sprintWarned) {
+  if (!saveSprintState({ input: sprintSavedInput, name: sprintName, marks: sprintMarks }) && !sprintWarned) {
     sprintWarned = true;
     var w = document.getElementById('sprint-warning');
     w.textContent = 'Браузер не даёт сохранять данные: отметки работают, пока страница открыта.';
@@ -924,9 +968,7 @@ function renderSprintReport() {
 
   var noRules = document.getElementById('report-norules');
   if (report.noRules.length > 0) {
-    var n = report.noRules.length;
-    noRules.textContent = 'Не вошло в отчёт: ' + n + ' ' + ruPlural(n, 'фича', 'фичи', 'фич') +
-      ' без правил (' + report.noRules.join('; ') + ')';
+    noRules.textContent = noRulesLine(report.noRules);
   }
   noRules.hidden = report.noRules.length === 0;
 
@@ -1043,6 +1085,7 @@ function resetSprintResult() {
   document.getElementById('sprint-result').textContent = '';
   document.getElementById('sprint-facts').hidden = true;
   document.getElementById('sprint-csv').hidden = true;
+  document.getElementById('sprint-report-csv').hidden = true;
   document.getElementById('sprint-report').hidden = true;
   document.getElementById('sprint-hint').textContent = '';
 }
@@ -1062,6 +1105,7 @@ function renderSprintSummary() {
   }
   document.getElementById('sprint-facts').hidden = false;
   document.getElementById('sprint-csv').hidden = stats.features === 0;
+  document.getElementById('sprint-report-csv').hidden = stats.features === 0;
   renderSprintReport();
 }
 
@@ -1215,10 +1259,21 @@ if (typeof document !== 'undefined') {
   renderRules();
   var savedSprint = loadSprintState();
   sprintMarks = savedSprint.marks;
+  sprintName = savedSprint.name;
+  sprintSavedInput = savedSprint.input;
+  document.getElementById('sprint-name').value = sprintName;
   if (savedSprint.input.trim()) {
     document.getElementById('sprint-input').value = savedSprint.input;
     onSprintBuild();
   }
+  document.getElementById('sprint-name').addEventListener('input', function (e) {
+    sprintName = e.target.value.slice(0, SPRINT_NAME_MAX);
+    persistSprint();
+  });
+  document.getElementById('sprint-report-csv').addEventListener('click', function () {
+    var now = new Date();
+    downloadText(reportFileName(sprintName, now), sprintReportToCsv(sprintPack, sprintMarks, sprintName, now));
+  });
   document.getElementById('rule-add').addEventListener('click', onAddRule);
   document.getElementById('build').addEventListener('click', onBuild);
   document.getElementById('sprint-build').addEventListener('click', onSprintBuild);
