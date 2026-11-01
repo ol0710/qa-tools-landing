@@ -71,13 +71,26 @@ button.primary {
 #result { text-align: left; margin-top: 16px; }
 #result ul { list-style: none; margin: 0; padding: 0; }
 #result li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-#result li::before, #sprint-result li::before { content: "\2610\00a0"; color: var(--muted); }
+#result li::before { content: "\2610\00a0"; color: var(--muted); }
 #csv { margin-top: 16px; }
 h4 { font-size: 0.95rem; margin: 12px 0 6px; color: var(--muted); }
 #sprint textarea { margin-bottom: 8px; }
 #sprint-example { width: 100%; margin-top: 8px; }
 #sprint-result ul { list-style: none; margin: 0; padding: 0; }
-#sprint-result li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+#sprint-result li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.check-text { flex: 1 1 220px; }
+button.status { min-width: 10.5rem; padding: 8px 12px; text-align: left; color: var(--muted); }
+button.status[data-status="passed"] { color: #4ade80; border-color: #16a34a; }
+button.status[data-status="failed"] { color: #f87171; border-color: #dc2626; }
+button.status[data-status="blocked"] { color: #fbbf24; border-color: #d97706; }
 .feature { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .feature h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--text); }
 .feature textarea { min-height: 90px; }
@@ -523,14 +536,104 @@ function sprintStats(pack) {
   return stats;
 }
 
-function sprintPackToCsv(pack) {
+// ---- Статусы проверок пакета ----
+var SPRINT_KEY = 'qa-sprint-state';
+var SPRINT_STATUSES = [
+  { id: 'notrun', icon: '○', label: 'не проверено' },
+  { id: 'passed', icon: '✓', label: 'прошла' },
+  { id: 'failed', icon: '✗', label: 'упала' },
+  { id: 'blocked', icon: '⊘', label: 'заблокирована' },
+  { id: 'skipped', icon: '↷', label: 'пропущена' }
+];
+
+function sprintStatus(id) {
+  for (var i = 0; i < SPRINT_STATUSES.length; i++) {
+    if (SPRINT_STATUSES[i].id === id) return SPRINT_STATUSES[i];
+  }
+  return SPRINT_STATUSES[0];
+}
+
+// По кругу: не проверено → прошла → упала → заблокирована → пропущена → не проверено.
+function nextStatus(id) {
+  var i = SPRINT_STATUSES.indexOf(sprintStatus(id));
+  return SPRINT_STATUSES[(i + 1) % SPRINT_STATUSES.length].id;
+}
+
+// Отметки лежат по названию фичи (без регистра) и ключу «группа + текст проверки».
+// Так они переживают пересборку пакета, добавление правил и правку списка фич.
+function markKey(group, text) {
+  return group + '\u0000' + text;
+}
+
+function getMark(marks, feature, group, text) {
+  var byFeature = marks[normalize(feature)];
+  var entry = byFeature && byFeature[markKey(group, text)];
+  return entry ? entry.status : 'notrun';
+}
+
+function setMark(marks, feature, group, text, status) {
+  var fk = normalize(feature);
+  var key = markKey(group, text);
+  if (status === 'notrun') {
+    if (marks[fk]) {
+      delete marks[fk][key];
+      if (Object.keys(marks[fk]).length === 0) delete marks[fk];
+    }
+    return;
+  }
+  if (!marks[fk]) marks[fk] = Object.create(null);
+  marks[fk][key] = { status: status };
+}
+
+function loadSprintState(storage) {
+  var state = { input: '', marks: Object.create(null) };
+  try {
+    var st = storage || defaultStorage();
+    if (!st) return state;
+    var raw = st.getItem(SPRINT_KEY);
+    if (!raw) return state;
+    var data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return state;
+    if (typeof data.input === 'string') state.input = data.input;
+    if (data.marks && typeof data.marks === 'object') {
+      Object.keys(data.marks).forEach(function (fk) {
+        var byFeature = data.marks[fk];
+        if (!byFeature || typeof byFeature !== 'object') return;
+        Object.keys(byFeature).forEach(function (key) {
+          var entry = byFeature[key];
+          if (!entry || typeof entry.status !== 'string') return;
+          if (entry.status === 'notrun' || sprintStatus(entry.status).id !== entry.status) return;
+          if (!state.marks[fk]) state.marks[fk] = Object.create(null);
+          state.marks[fk][key] = { status: entry.status };
+        });
+      });
+    }
+    return state;
+  } catch (e) {
+    return { input: '', marks: Object.create(null) };
+  }
+}
+
+function saveSprintState(state, storage) {
+  try {
+    var st = storage || defaultStorage();
+    if (!st) return false;
+    st.setItem(SPRINT_KEY, JSON.stringify({ input: state.input, marks: state.marks }));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function sprintPackToCsv(pack, marks) {
   var lines = ['№;Фича;Группа;Проверка;Статус'];
   var n = 0;
   pack.forEach(function (f) {
     if (!f.recognized) return;
     f.items.forEach(function (it) {
       n++;
-      lines.push([n, csvCell(f.name), csvCell(it.group), csvCell(it.text), 'не проверено'].join(';'));
+      var status = sprintStatus(getMark(marks || {}, f.name, it.group, it.text)).label;
+      lines.push([n, csvCell(f.name), csvCell(it.group), csvCell(it.text), status].join(';'));
     });
   });
   return '﻿' + lines.join('\r\n') + '\r\n';
@@ -671,6 +774,61 @@ function onBuild() {
 }
 
 var sprintPack = [];
+var sprintMarks = Object.create(null);
+var sprintSavedInput = '';
+var sprintWarned = false;
+
+function persistSprint() {
+  if (!saveSprintState({ input: sprintSavedInput, marks: sprintMarks }) && !sprintWarned) {
+    sprintWarned = true;
+    var w = document.getElementById('sprint-warning');
+    w.textContent = 'Браузер не даёт сохранять данные: отметки работают, пока страница открыта.';
+    w.hidden = false;
+  }
+}
+
+function paintStatusButton(btn, id) {
+  var s = sprintStatus(id);
+  btn.textContent = s.icon + ' ' + s.label;
+  btn.dataset.status = s.id;
+  btn.setAttribute('aria-label', 'Статус проверки: ' + s.label + '. Нажмите, чтобы сменить');
+}
+
+function renderSprintItems(container, feature) {
+  container.textContent = '';
+  var groups = [];
+  var byGroup = Object.create(null);
+  feature.items.forEach(function (it) {
+    if (!byGroup[it.group]) { byGroup[it.group] = []; groups.push(it.group); }
+    byGroup[it.group].push(it);
+  });
+  groups.forEach(function (g) {
+    var h = document.createElement('h4');
+    h.textContent = g;
+    var ul = document.createElement('ul');
+    byGroup[g].forEach(function (it) {
+      var li = document.createElement('li');
+      var span = document.createElement('span');
+      span.className = 'check-text';
+      span.textContent = it.text;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'status';
+      paintStatusButton(btn, getMark(sprintMarks, feature.name, it.group, it.text));
+      btn.addEventListener('click', function () {
+        var next = nextStatus(getMark(sprintMarks, feature.name, it.group, it.text));
+        setMark(sprintMarks, feature.name, it.group, it.text, next);
+        paintStatusButton(btn, next);
+        persistSprint();
+      });
+      li.appendChild(span);
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+    container.appendChild(h);
+    container.appendChild(ul);
+  });
+}
 
 function resetSprintResult() {
   sprintPack = [];
@@ -706,7 +864,7 @@ function renderSprintFeature(i) {
   box.appendChild(h);
   if (feature.recognized) {
     var body = document.createElement('div');
-    renderResult(body, feature.items, 'h4');
+    renderSprintItems(body, feature);
     box.appendChild(body);
     return;
   }
@@ -775,6 +933,8 @@ function onSprintBuild() {
       ruPlural(parsed.skipped, 'строка', 'строки', 'строк');
   }
   sprintPack = buildSprintPack(parsed.features, customRules);
+  sprintSavedInput = document.getElementById('sprint-input').value;
+  persistSprint();
   var container = document.getElementById('sprint-result');
   sprintPack.forEach(function (f, i) {
     var box = document.createElement('div');
@@ -843,13 +1003,19 @@ function onBugCopy() {
 if (typeof document !== 'undefined') {
   customRules = loadCustomRules();
   renderRules();
+  var savedSprint = loadSprintState();
+  sprintMarks = savedSprint.marks;
+  if (savedSprint.input.trim()) {
+    document.getElementById('sprint-input').value = savedSprint.input;
+    onSprintBuild();
+  }
   document.getElementById('rule-add').addEventListener('click', onAddRule);
   document.getElementById('build').addEventListener('click', onBuild);
   document.getElementById('sprint-build').addEventListener('click', onSprintBuild);
   document.getElementById('sprint-example').addEventListener('click', onSprintExample);
   document.getElementById('sprint-input').addEventListener('input', resetSprintResult);
   document.getElementById('sprint-csv').addEventListener('click', function () {
-    downloadText('sprint-pack.csv', sprintPackToCsv(sprintPack));
+    downloadText('sprint-pack.csv', sprintPackToCsv(sprintPack, sprintMarks));
   });
   document.getElementById('csv').addEventListener('click', function () { downloadCsv(currentItems); });
   ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity'].forEach(function (id) {

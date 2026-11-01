@@ -333,7 +333,7 @@ check('bugReportToCsv: BOM, заголовок, шаги, защита ячее�
 check('секция баг-репорта', () => {
   const html = readHtml();
   const pos = (id) => html.indexOf('id="' + id + '"');
-  assert.ok(pos('tool') < pos('bug') && pos('bug') < pos('problem'), 'порядок секций');
+  assert.ok(pos('tool') < pos('bug') && pos('rules') < pos('bug') && pos('sprint') < pos('bug'), 'порядок секций');
   const sec = html.match(/<section[^>]*id="bug"[^>]*>([\s\S]*?)<\/section>/);
   assert.ok(sec, 'нет секции #bug');
   for (const id of ['bug-title', 'bug-env', 'bug-steps', 'bug-expected', 'bug-actual', 'bug-severity']) {
