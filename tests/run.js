@@ -286,8 +286,8 @@ check('блок правил объясняет, что вводить, и да�
   assert.ok(text.includes('Свои проверки для вашей темы'), 'заголовок');
   assert.ok(!text.includes('Настройте под свой проект'), 'старый заголовок');
   assert.ok(text.includes('Сработает, когда это слово встретится в описании фичи'), 'подпись');
-  assert.ok(/placeholder="склад, остаток"/.test(sec), 'пример ключевых слов');
-  assert.ok(/placeholder="Остаток не уходит в минус&#10;Приёмка обновляет остаток"/.test(sec), 'пример проверок');
+  assert.ok(/placeholder="возврат, рефанд"/.test(sec), 'пример ключевых слов');
+  assert.ok(/placeholder="Сумма возврата не больше суммы оплаты&#10;Повторный возврат того же заказа"/.test(sec), 'пример проверок');
   assert.ok(text.includes('склад*') && text.includes('любые окончания'), 'подсказка про звёздочку');
   assert.ok(/<label[^>]*for="rule-keys"/.test(sec) && /<label[^>]*for="rule-checks"/.test(sec), 'подписи полей');
 });
