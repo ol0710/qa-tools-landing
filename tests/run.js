@@ -379,8 +379,8 @@ check('баг-репорт не использует innerHTML', () => {
 check('под заголовком #tool есть строка-пояснение без упоминания ИИ', () => {
   const text = 'Чек-листы и баг-репорты из описания фичи. Всё в браузере, данные никуда не уходят.';
   const html = readHtml();
-  const m = html.match(/<section[^>]*id="tool"[^>]*>[\s\S]*?<\/h1>\s*<p class="lead">([^<]*)<\/p>/);
-  assert.ok(m, 'нет <p class="lead"> сразу под h1');
+  const m = html.match(/<section[^>]*id="tool"[^>]*>[\s\S]*?<\/h2>\s*<p class="lead">([^<]*)<\/p>/);
+  assert.ok(m, 'нет <p class="lead"> сразу под h2');
   assert.strictEqual(m[1], text);
   assert.ok(!/ИИ|нейросет/i.test(m[1]));
 });
