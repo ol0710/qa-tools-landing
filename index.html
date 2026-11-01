@@ -144,6 +144,20 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <div id="result"></div>
     <button id="csv" type="button" hidden>Скачать для Excel (.csv)</button>
   </section>
+  <section id="rules">
+    <h2>Свои проверки для вашей темы</h2>
+    <p>Встроенные темы знают пароли, формы, оплату и поиск. Если у вас другая тема, например склад, добавьте её сами. Сработает, когда это слово встретится в описании фичи.</p>
+    <label class="field" for="rule-keys">Ключевые слова через запятую</label>
+    <input type="text" id="rule-keys" placeholder="склад, остаток">
+    <label class="field" for="rule-checks">Проверки, по одной на строку</label>
+    <textarea id="rule-checks" placeholder="Остаток не уходит в минус&#10;Приёмка обновляет остаток"></textarea>
+    <p class="note">Хотите ловить любые окончания слова? Поставьте * в конце: склад* найдёт «склад», «склада», «складе». Слово без * ищется целиком.</p>
+    <button id="rule-add" type="button">Добавить</button>
+    <p id="rule-hint" class="note" role="status"></p>
+    <ul id="rules-list"></ul>
+    <p class="note">Правила хранятся только в этом браузере.</p>
+    <p id="rules-warning" role="status" hidden></p>
+  </section>
   <section id="sprint">
     <h2>Соберите пакет проверок на весь спринт</h2>
     <p>Впишите фичи спринта, по одной в строке, и получите чек-лист по каждой. Если для фичи нет правил, добавьте свои проверки прямо под ней.</p>
@@ -161,6 +175,12 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     </div>
     <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
     <p id="sprint-warning" role="status" hidden></p>
+  </section>
+  <section id="problem">
+    <h2>Рутина, которую можно не повторять</h2>
+    <p>Чек-листы и тест-кейсы каждый раз собираются с нуля, баг-репорты пишутся руками. Это время уходит на одно и то же.</p>
+    <p>Инструмент выбирает стартовую заготовку по ключевым словам из описания фичи. Вы правите её под проект и добавляете свои проверки.</p>
+    <p>Всё работает в браузере. Описания и правила никуда не отправляются.</p>
   </section>
   <section id="bug">
     <h2>Баг-репорт для Jira и Excel</h2>
@@ -189,26 +209,6 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <textarea id="bug-result" readonly hidden></textarea>
     <button id="bug-copy" type="button" hidden>Скопировать</button>
     <button id="bug-csv" type="button" hidden>Скачать для Excel (.csv)</button>
-  </section>
-  <section id="problem">
-    <h2>Рутина, которую можно не повторять</h2>
-    <p>Чек-листы и тест-кейсы каждый раз собираются с нуля, баг-репорты пишутся руками. Это время уходит на одно и то же.</p>
-    <p>Инструмент выбирает стартовую заготовку по ключевым словам из описания фичи. Вы правите её под проект и добавляете свои проверки.</p>
-    <p>Всё работает в браузере. Описания и правила никуда не отправляются.</p>
-  </section>
-  <section id="rules">
-    <h2>Свои проверки для вашей темы</h2>
-    <p>Встроенные темы знают пароли, формы, оплату и поиск. Если у вас другая тема, например склад, добавьте её сами. Сработает, когда это слово встретится в описании фичи.</p>
-    <label class="field" for="rule-keys">Ключевые слова через запятую</label>
-    <input type="text" id="rule-keys" placeholder="склад, остаток">
-    <label class="field" for="rule-checks">Проверки, по одной на строку</label>
-    <textarea id="rule-checks" placeholder="Остаток не уходит в минус&#10;Приёмка обновляет остаток"></textarea>
-    <p class="note">Хотите ловить любые окончания слова? Поставьте * в конце: склад* найдёт «склад», «склада», «складе». Слово без * ищется целиком.</p>
-    <button id="rule-add" type="button">Добавить</button>
-    <p id="rule-hint" class="note" role="status"></p>
-    <ul id="rules-list"></ul>
-    <p class="note">Правила хранятся только в этом браузере.</p>
-    <p id="rules-warning" role="status" hidden></p>
   </section>
   <footer id="footer">Набор маленьких QA-инструментов. Данные остаются в вашем браузере.</footer>
 </main>
