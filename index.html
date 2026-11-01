@@ -87,6 +87,12 @@ h4 { font-size: 0.95rem; margin: 12px 0 6px; color: var(--muted); }
   overflow-wrap: anywhere;
 }
 .check-text { flex: 1 1 220px; }
+.check-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button.comment-toggle { padding: 8px 12px; color: var(--muted); }
+button.comment-toggle[data-has="1"] { color: var(--text); border-color: var(--accent); }
+.comment-box { flex: 1 1 100%; }
+.feature .comment-box textarea { min-height: 64px; margin-bottom: 0; }
+.comment-preview { margin: 0; color: var(--muted); font-size: 0.9rem; font-style: italic; }
 button.status { min-width: 10.5rem; padding: 8px 12px; text-align: left; color: var(--muted); }
 button.status[data-status="passed"] { color: #4ade80; border-color: #16a34a; }
 button.status[data-status="failed"] { color: #f87171; border-color: #dc2626; }
@@ -565,16 +571,26 @@ function markKey(group, text) {
   return group + '\u0000' + text;
 }
 
+var SPRINT_COMMENT_MAX = 500;
+
 function getMark(marks, feature, group, text) {
   var byFeature = marks[normalize(feature)];
   var entry = byFeature && byFeature[markKey(group, text)];
   return entry ? entry.status : 'notrun';
 }
 
-function setMark(marks, feature, group, text, status) {
+function getComment(marks, feature, group, text) {
+  var byFeature = marks[normalize(feature)];
+  var entry = byFeature && byFeature[markKey(group, text)];
+  return entry && entry.comment ? entry.comment : '';
+}
+
+// Запись есть, пока у проверки есть статус или комментарий; пустая запись удаляется.
+function putEntry(marks, feature, group, text, status, comment) {
   var fk = normalize(feature);
   var key = markKey(group, text);
-  if (status === 'notrun') {
+  var empty = status === 'notrun' && !comment.trim();
+  if (empty) {
     if (marks[fk]) {
       delete marks[fk][key];
       if (Object.keys(marks[fk]).length === 0) delete marks[fk];
@@ -582,7 +598,16 @@ function setMark(marks, feature, group, text, status) {
     return;
   }
   if (!marks[fk]) marks[fk] = Object.create(null);
-  marks[fk][key] = { status: status };
+  marks[fk][key] = comment.trim() ? { status: status, comment: comment } : { status: status };
+}
+
+function setMark(marks, feature, group, text, status) {
+  putEntry(marks, feature, group, text, status, getComment(marks, feature, group, text));
+}
+
+function setComment(marks, feature, group, text, comment) {
+  putEntry(marks, feature, group, text, getMark(marks, feature, group, text),
+    String(comment).slice(0, SPRINT_COMMENT_MAX));
 }
 
 function loadSprintState(storage) {
@@ -602,9 +627,11 @@ function loadSprintState(storage) {
         Object.keys(byFeature).forEach(function (key) {
           var entry = byFeature[key];
           if (!entry || typeof entry.status !== 'string') return;
-          if (entry.status === 'notrun' || sprintStatus(entry.status).id !== entry.status) return;
+          if (sprintStatus(entry.status).id !== entry.status) return;
+          var comment = typeof entry.comment === 'string' ? entry.comment.slice(0, SPRINT_COMMENT_MAX) : '';
+          if (entry.status === 'notrun' && !comment.trim()) return;
           if (!state.marks[fk]) state.marks[fk] = Object.create(null);
-          state.marks[fk][key] = { status: entry.status };
+          state.marks[fk][key] = comment.trim() ? { status: entry.status, comment: comment } : { status: entry.status };
         });
       });
     }
@@ -626,14 +653,16 @@ function saveSprintState(state, storage) {
 }
 
 function sprintPackToCsv(pack, marks) {
-  var lines = ['№;Фича;Группа;Проверка;Статус'];
+  var lines = ['№;Фича;Группа;Проверка;Статус;Комментарий'];
   var n = 0;
+  marks = marks || {};
   pack.forEach(function (f) {
     if (!f.recognized) return;
     f.items.forEach(function (it) {
       n++;
-      var status = sprintStatus(getMark(marks || {}, f.name, it.group, it.text)).label;
-      lines.push([n, csvCell(f.name), csvCell(it.group), csvCell(it.text), status].join(';'));
+      var status = sprintStatus(getMark(marks, f.name, it.group, it.text)).label;
+      var comment = getComment(marks, f.name, it.group, it.text);
+      lines.push([n, csvCell(f.name), csvCell(it.group), csvCell(it.text), status, csvCell(comment)].join(';'));
     });
   });
   return '﻿' + lines.join('\r\n') + '\r\n';
@@ -794,6 +823,46 @@ function paintStatusButton(btn, id) {
   btn.setAttribute('aria-label', 'Статус проверки: ' + s.label + '. Нажмите, чтобы сменить');
 }
 
+// Кнопка «Комментарий», поле ввода и строка-превью (видна, пока поле свёрнуто).
+function buildCommentControls(feature, it) {
+  var toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'comment-toggle';
+  var box = document.createElement('div');
+  box.className = 'comment-box';
+  var field = document.createElement('textarea');
+  field.maxLength = SPRINT_COMMENT_MAX;
+  field.hidden = true;
+  field.setAttribute('aria-label', 'Комментарий к проверке: ' + it.text);
+  field.value = getComment(sprintMarks, feature.name, it.group, it.text);
+  var preview = document.createElement('p');
+  preview.className = 'comment-preview';
+
+  function refresh() {
+    var text = field.value.trim();
+    var open = !field.hidden;
+    toggle.textContent = text ? '✎ Комментарий' : '+ Комментарий';
+    toggle.dataset.has = text ? '1' : '';
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    preview.textContent = text.length > 80 ? text.slice(0, 80) + '…' : text;
+    preview.hidden = open || !text;
+  }
+  toggle.addEventListener('click', function () {
+    field.hidden = !field.hidden;
+    refresh();
+    if (!field.hidden) field.focus();
+  });
+  field.addEventListener('input', function () {
+    setComment(sprintMarks, feature.name, it.group, it.text, field.value);
+    persistSprint();
+    refresh();
+  });
+  box.appendChild(field);
+  box.appendChild(preview);
+  refresh();
+  return { toggle: toggle, box: box };
+}
+
 function renderSprintItems(container, feature) {
   container.textContent = '';
   var groups = [];
@@ -821,8 +890,14 @@ function renderSprintItems(container, feature) {
         paintStatusButton(btn, next);
         persistSprint();
       });
+      var actions = document.createElement('div');
+      actions.className = 'check-actions';
+      var comment = buildCommentControls(feature, it);
+      actions.appendChild(btn);
+      actions.appendChild(comment.toggle);
       li.appendChild(span);
-      li.appendChild(btn);
+      li.appendChild(actions);
+      li.appendChild(comment.box);
       ul.appendChild(li);
     });
     container.appendChild(h);
