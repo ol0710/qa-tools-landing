@@ -87,6 +87,20 @@ h4 { font-size: 0.95rem; margin: 12px 0 6px; color: var(--muted); }
   overflow-wrap: anywhere;
 }
 .check-text { flex: 1 1 220px; }
+#sprint-report { margin-top: 24px; }
+#sprint-report h3 { margin: 0 0 8px; color: var(--text); font-size: 1.05rem; }
+#report-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+#report-table th, #report-table td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border); }
+#report-table th:first-child, #report-table td:first-child { text-align: left; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  #report-table thead { position: absolute; left: -9999px; }
+  #report-table, #report-table tbody, #report-table tr, #report-table td { display: block; width: 100%; }
+  #report-table tr { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  #report-table td { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border: 0; text-align: right; }
+  #report-table td::before { content: attr(data-label); color: var(--muted); text-align: left; }
+  #report-table td:first-child { display: block; font-weight: 600; text-align: left; }
+  #report-table td:first-child::before { content: none; }
+}
 .check-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 button.comment-toggle { padding: 8px 12px; color: var(--muted); }
 button.comment-toggle[data-has="1"] { color: var(--text); border-color: var(--accent); }
@@ -197,6 +211,14 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <div id="sprint-facts" role="status" hidden>
       <p id="sprint-facts-main"></p>
       <p id="sprint-facts-norules" class="note" hidden></p>
+    </div>
+    <div id="sprint-report" hidden>
+      <h3>Отчёт по качеству</h3>
+      <p id="report-total"></p>
+      <table id="report-table">
+        <thead><tr><th>Фича</th><th>Прошли</th><th>Упали</th><th>Заблокированы</th><th>Пропущены</th><th>Не проверены</th><th>Готовность</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
     <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
     <p id="sprint-warning" role="status" hidden></p>
@@ -652,6 +674,38 @@ function saveSprintState(state, storage) {
   }
 }
 
+// Готовность = прошли ÷ (все минус пропущенные). Если считать нечего, null (на экране «—»).
+function readiness(c) {
+  var base = c.total - c.skipped;
+  return base > 0 ? Math.round(c.passed * 100 / base) : null;
+}
+
+function formatReadiness(value) {
+  return value === null ? '—' : value + '%';
+}
+
+// Только фичи с правилами; цифры берутся из тех же отметок, что и CSV пакета.
+function sprintReport(pack, marks) {
+  function blank(name) {
+    return { name: name, total: 0, passed: 0, failed: 0, blocked: 0, skipped: 0, notrun: 0, ready: null };
+  }
+  var all = blank('Итого');
+  var rows = [];
+  pack.forEach(function (f) {
+    if (!f.recognized) return;
+    var row = blank(f.name);
+    f.items.forEach(function (it) {
+      var s = getMark(marks, f.name, it.group, it.text);
+      row.total++; row[s]++;
+      all.total++; all[s]++;
+    });
+    row.ready = readiness(row);
+    rows.push(row);
+  });
+  all.ready = readiness(all);
+  return { features: rows, total: all };
+}
+
 function sprintPackToCsv(pack, marks) {
   var lines = ['№;Фича;Группа;Проверка;Статус;Комментарий'];
   var n = 0;
@@ -816,6 +870,38 @@ function persistSprint() {
   }
 }
 
+var REPORT_COLUMNS = [
+  ['passed', 'Прошли'], ['failed', 'Упали'], ['blocked', 'Заблокированы'],
+  ['skipped', 'Пропущены'], ['notrun', 'Не проверены']
+];
+
+function renderSprintReport() {
+  var box = document.getElementById('sprint-report');
+  var report = sprintReport(sprintPack, sprintMarks);
+  if (report.features.length === 0) { box.hidden = true; return; }
+  var t = report.total;
+  document.getElementById('report-total').textContent = 'Всего проверок: ' + t.total +
+    '. Прошли ' + t.passed + ', упали ' + t.failed + ', заблокированы ' + t.blocked +
+    ', пропущены ' + t.skipped + ', не проверены ' + t.notrun +
+    '. Готовность: ' + formatReadiness(t.ready);
+  var body = document.querySelector('#report-table tbody');
+  body.textContent = '';
+  report.features.forEach(function (row) {
+    var tr = document.createElement('tr');
+    function cell(label, value) {
+      var td = document.createElement('td');
+      td.dataset.label = label;
+      td.textContent = value;
+      tr.appendChild(td);
+    }
+    cell('Фича', row.name);
+    REPORT_COLUMNS.forEach(function (c) { cell(c[1], row[c[0]]); });
+    cell('Готовность', formatReadiness(row.ready));
+    body.appendChild(tr);
+  });
+  box.hidden = false;
+}
+
 function paintStatusButton(btn, id) {
   var s = sprintStatus(id);
   btn.textContent = s.icon + ' ' + s.label;
@@ -889,6 +975,7 @@ function renderSprintItems(container, feature) {
         setMark(sprintMarks, feature.name, it.group, it.text, next);
         paintStatusButton(btn, next);
         persistSprint();
+        renderSprintReport();
       });
       var actions = document.createElement('div');
       actions.className = 'check-actions';
@@ -910,6 +997,7 @@ function resetSprintResult() {
   document.getElementById('sprint-result').textContent = '';
   document.getElementById('sprint-facts').hidden = true;
   document.getElementById('sprint-csv').hidden = true;
+  document.getElementById('sprint-report').hidden = true;
   document.getElementById('sprint-hint').textContent = '';
 }
 
@@ -928,6 +1016,7 @@ function renderSprintSummary() {
   }
   document.getElementById('sprint-facts').hidden = false;
   document.getElementById('sprint-csv').hidden = stats.features === 0;
+  renderSprintReport();
 }
 
 function renderSprintFeature(i) {
