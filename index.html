@@ -250,6 +250,7 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
     <button id="sprint-report-csv" type="button" hidden>Скачать отчёт для Excel (.csv)</button>
     <div id="sprint-notes" hidden>
+      <p id="sprint-orphans" class="note" hidden></p>
       <p class="note">Заблокирована: проверить нельзя из-за внешней причины (нет стенда, не готов другой сервис). Пропущена: вы решили не проверять в этом спринте.</p>
       <p class="note">Отметки хранятся только в этом браузере. Чтобы не потерять, скачайте пакет в Excel.</p>
       <button id="sprint-reset" type="button">Начать заново</button>
@@ -796,6 +797,28 @@ function reportFileName(name, now) {
   return 'report-' + (slug ? slug + '-' : '') + dateIso(now) + '.csv';
 }
 
+// Отметки фич из списка, которым не соответствует ни одна текущая проверка (правило удалено или изменено).
+// Отметки фич, которых нет в списке, не считаются: они ждут, пока фичу вернут.
+function sprintOrphans(pack, marks) {
+  var count = 0;
+  pack.forEach(function (f) {
+    var byFeature = marks[normalize(f.name)];
+    if (!byFeature) return;
+    var valid = Object.create(null);
+    f.items.forEach(function (it) { valid[markKey(it.group, it.text)] = true; });
+    Object.keys(byFeature).forEach(function (key) {
+      if (!valid[key]) count++;
+    });
+  });
+  return count;
+}
+
+function orphansLine(n) {
+  var one = ruPlural(n, 'a', 'b', 'b') === 'a';
+  return n + ' ' + ruPlural(n, 'отметка', 'отметки', 'отметок') + ' ' + (one ? 'не относится' : 'не относятся') +
+    ' к текущим проверкам: правило изменилось или удалено';
+}
+
 function sprintPackToCsv(pack, marks) {
   var lines = ['№;Фича;Группа;Проверка;Статус;Комментарий'];
   var n = 0;
@@ -911,6 +934,7 @@ function renderRules() {
       customRules.splice(i, 1);
       persistRules();
       renderRules();
+      if (sprintPack.length > 0) refreshSprintAfterRule();
     });
     li.appendChild(span);
     li.appendChild(del);
@@ -928,6 +952,7 @@ function onAddRule() {
   customRules.push(rule);
   persistRules();
   renderRules();
+  if (sprintPack.length > 0) refreshSprintAfterRule();
   hint.textContent = '';
   document.getElementById('rule-keys').value = '';
   document.getElementById('rule-checks').value = '';
@@ -1040,6 +1065,7 @@ function onSprintStorage(e) {
   }
   var views = document.querySelectorAll('#sprint-result button.status, #sprint-result .comment-box');
   Array.prototype.forEach.call(views, function (el) { el.dispatchEvent(new Event('resync')); });
+  renderSprintOrphans();
   renderSprintReport();
 }
 
@@ -1169,6 +1195,13 @@ function resetSprintResult() {
   document.getElementById('sprint-hint').textContent = '';
 }
 
+function renderSprintOrphans() {
+  var n = sprintOrphans(sprintPack, sprintMarks);
+  var el = document.getElementById('sprint-orphans');
+  if (n > 0) el.textContent = orphansLine(n);
+  el.hidden = n === 0;
+}
+
 function renderSprintSummary() {
   var stats = sprintStats(sprintPack);
   var main = document.getElementById('sprint-facts-main');
@@ -1185,6 +1218,7 @@ function renderSprintSummary() {
   document.getElementById('sprint-facts').hidden = false;
   document.getElementById('sprint-csv').hidden = stats.features === 0;
   document.getElementById('sprint-report-csv').hidden = stats.features === 0;
+  renderSprintOrphans();
   document.getElementById('sprint-notes').hidden = false;
   renderSprintReport();
 }
@@ -1243,11 +1277,15 @@ function renderSprintFeature(i) {
 
 // Правила общие: пересчитываем данные всех фич, но перерисовываем только изменившиеся,
 // чтобы не стереть набранное в формах других фич без правил.
+function itemsSignature(feature) {
+  return feature.items.map(function (it) { return markKey(it.group, it.text); }).join('\n');
+}
+
 function refreshSprintAfterRule() {
   var fresh = buildSprintPack(sprintPack.map(function (f) { return f.name; }), customRules);
   fresh.forEach(function (f, i) {
     var old = sprintPack[i];
-    var changed = f.recognized !== old.recognized || f.items.length !== old.items.length;
+    var changed = f.recognized !== old.recognized || itemsSignature(f) !== itemsSignature(old);
     sprintPack[i] = f;
     if (changed) renderSprintFeature(i);
   });
