@@ -122,6 +122,21 @@ button.status[data-status="blocked"] { color: #fbbf24; border-color: #d97706; }
 #sprint-facts { margin-top: 16px; }
 #sprint-facts p { margin: 0 0 4px; }
 #sprint-csv, #sprint-report-csv { margin-top: 12px; margin-right: 8px; }
+#sprint-notes { margin-top: 16px; }
+#sprint-notes p { margin: 0 0 8px; }
+#sprint-reset { margin-top: 4px; }
+#reset-dialog {
+  max-width: min(90vw, 420px);
+  padding: 20px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+#reset-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+#reset-dialog p { margin: 0 0 16px; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#reset-confirm { color: #f87171; border-color: #dc2626; }
 #sprint-warning { color: #fbbf24; font-size: 0.9rem; }
 
 input[type="text"] {
@@ -208,7 +223,7 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     <input type="text" id="sprint-name" maxlength="80" placeholder="Спринт 12">
     <label class="field" for="sprint-input">Фичи спринта</label>
     <textarea id="sprint-input" placeholder="Приёмка товара&#10;Возврат&#10;Оплата картой"></textarea>
-    <p class="note">Список можно вставить из таблицы (Excel, Jira): одна фича в строке. Учитываются первые 10 фич.</p>
+    <p class="note">Список можно вставить из таблицы (Excel, Jira): одна фича в строке. Учитываются первые 30 фич.</p>
     <button id="sprint-build" class="primary" type="button">Собрать пакет</button>
     <button id="sprint-example" type="button">Показать на примере</button>
     <p class="note">Пример подставится вместо текста в поле. Чтобы увидеть пример заново, удалите добавленное правило в разделе «Свои правила».</p>
@@ -234,6 +249,18 @@ footer { color: var(--muted); font-size: 0.9rem; padding-top: 8px; border-top: 1
     </div>
     <button id="sprint-csv" type="button" hidden>Скачать пакет для Excel (.csv)</button>
     <button id="sprint-report-csv" type="button" hidden>Скачать отчёт для Excel (.csv)</button>
+    <div id="sprint-notes" hidden>
+      <p class="note">Заблокирована: проверить нельзя из-за внешней причины (нет стенда, не готов другой сервис). Пропущена: вы решили не проверять в этом спринте.</p>
+      <p class="note">Отметки хранятся только в этом браузере. Чтобы не потерять, скачайте пакет в Excel.</p>
+      <button id="sprint-reset" type="button">Начать заново</button>
+    </div>
+    <dialog id="reset-dialog">
+      <p>Все отметки и комментарии будут стёрты, вернуть их нельзя. Если отчёт по этому спринту нужен, сначала скачайте его.</p>
+      <div class="dialog-actions">
+        <button id="reset-confirm" type="button">Стереть</button>
+        <button id="reset-cancel" type="button" autofocus>Отмена</button>
+      </div>
+    </dialog>
     <p id="sprint-warning" role="status" hidden></p>
   </section>
   <section id="bug">
@@ -501,7 +528,7 @@ function parseRuleInput(keysText, checksText) {
 }
 
 // ---- Пакет проверок на спринт ----
-var SPRINT_MAX_FEATURES = 10;
+var SPRINT_MAX_FEATURES = 30;
 var SPRINT_MAX_LENGTH = 120;
 var SPRINT_EXAMPLE = [
   'Поиск товара по названию и артикулу',
@@ -522,7 +549,7 @@ function ruPlural(n, one, few, many) {
   return many;
 }
 
-// Строки поля в список фич: без пустых и повторов, не длиннее 120 знаков, не больше 10 штук.
+// Строки поля в список фич: без пустых и повторов, не длиннее 120 знаков, не больше 30 штук.
 function parseSprintFeatures(text) {
   var seen = Object.create(null);
   var names = [];
@@ -989,6 +1016,16 @@ function renderSprintReport() {
   box.hidden = false;
 }
 
+// «Начать заново»: стирает все статусы и комментарии, список фич и название спринта остаются.
+function resetSprintMarks() {
+  sprintMarks = Object.create(null);
+  persistSprint();
+  sprintPack.forEach(function (f, i) {
+    if (f.recognized) renderSprintFeature(i);
+  });
+  renderSprintSummary();
+}
+
 function paintStatusButton(btn, id) {
   var s = sprintStatus(id);
   btn.textContent = s.icon + ' ' + s.label;
@@ -1086,6 +1123,7 @@ function resetSprintResult() {
   document.getElementById('sprint-facts').hidden = true;
   document.getElementById('sprint-csv').hidden = true;
   document.getElementById('sprint-report-csv').hidden = true;
+  document.getElementById('sprint-notes').hidden = true;
   document.getElementById('sprint-report').hidden = true;
   document.getElementById('sprint-hint').textContent = '';
 }
@@ -1106,6 +1144,7 @@ function renderSprintSummary() {
   document.getElementById('sprint-facts').hidden = false;
   document.getElementById('sprint-csv').hidden = stats.features === 0;
   document.getElementById('sprint-report-csv').hidden = stats.features === 0;
+  document.getElementById('sprint-notes').hidden = false;
   renderSprintReport();
 }
 
@@ -1270,6 +1309,16 @@ if (typeof document !== 'undefined') {
     sprintName = e.target.value.slice(0, SPRINT_NAME_MAX);
     persistSprint();
   });
+  var resetDialog = document.getElementById('reset-dialog');
+  document.getElementById('sprint-reset').addEventListener('click', function () {
+    if (typeof resetDialog.showModal === 'function') resetDialog.showModal();
+    else if (confirm('Все отметки и комментарии будут стёрты, вернуть их нельзя. Если отчёт по этому спринту нужен, сначала скачайте его.')) resetSprintMarks();
+  });
+  document.getElementById('reset-confirm').addEventListener('click', function () {
+    resetDialog.close();
+    resetSprintMarks();
+  });
+  document.getElementById('reset-cancel').addEventListener('click', function () { resetDialog.close(); });
   document.getElementById('sprint-report-csv').addEventListener('click', function () {
     var now = new Date();
     downloadText(reportFileName(sprintName, now), sprintReportToCsv(sprintPack, sprintMarks, sprintName, now));
