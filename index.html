@@ -1016,6 +1016,33 @@ function renderSprintReport() {
   box.hidden = false;
 }
 
+// Другая вкладка сохранила данные: подтягиваем их сюда. Хранилище всегда свежее (каждая правка пишется
+// сразу), поэтому берём отметки оттуда. Сама функция ничего не сохраняет, чтобы вкладки не гоняли друг
+// друга по кругу. Поля названия и списка фич, в которых сейчас печатают, не трогаем.
+function onSprintStorage(e) {
+  if (e.key !== null && e.key !== SPRINT_KEY) return;
+  var loaded = loadSprintState();
+  var active = document.activeElement;
+  var typingBox = active && active.tagName === 'TEXTAREA' ? active.closest('.comment-box') : null;
+
+  sprintMarks = loaded.marks;
+  var nameField = document.getElementById('sprint-name');
+  var inputField = document.getElementById('sprint-input');
+  if (active !== nameField) {
+    sprintName = loaded.name;
+    nameField.value = loaded.name;
+  }
+  // В другой вкладке собрали пакет по другому списку фич: собираем и здесь, если тут сейчас ничего не набирают.
+  if (loaded.input.trim() && loaded.input !== sprintSavedInput && active !== inputField && !typingBox) {
+    inputField.value = loaded.input;
+    onSprintBuild();
+    return;
+  }
+  var views = document.querySelectorAll('#sprint-result button.status, #sprint-result .comment-box');
+  Array.prototype.forEach.call(views, function (el) { el.dispatchEvent(new Event('resync')); });
+  renderSprintReport();
+}
+
 // «Начать заново»: стирает все статусы и комментарии, список фич и название спринта остаются.
 function resetSprintMarks() {
   sprintMarks = Object.create(null);
@@ -1068,6 +1095,13 @@ function buildCommentControls(feature, it) {
     refresh();
     renderSprintReport();
   });
+  // Другая вкладка поменяла комментарий: подтянуть его. Каждая правка здесь сохраняется сразу, поэтому
+  // при вводе значение совпадает и поле не трогается (курсор не прыгает).
+  box.addEventListener('resync', function () {
+    var stored = getComment(sprintMarks, feature.name, it.group, it.text);
+    if (field.value !== stored) field.value = stored;
+    refresh();
+  });
   box.appendChild(field);
   box.appendChild(preview);
   refresh();
@@ -1088,6 +1122,9 @@ function renderSprintItems(container, feature) {
     var ul = document.createElement('ul');
     byGroup[g].forEach(function (it) {
       var li = document.createElement('li');
+      li.dataset.feature = feature.name;
+      li.dataset.group = it.group;
+      li.dataset.text = it.text;
       var span = document.createElement('span');
       span.className = 'check-text';
       span.textContent = it.text;
@@ -1101,6 +1138,10 @@ function renderSprintItems(container, feature) {
         paintStatusButton(btn, next);
         persistSprint();
         renderSprintReport();
+      });
+      // Другая вкладка поменяла отметки: перерисовать только эту кнопку.
+      btn.addEventListener('resync', function () {
+        paintStatusButton(btn, getMark(sprintMarks, feature.name, it.group, it.text));
       });
       var actions = document.createElement('div');
       actions.className = 'check-actions';
@@ -1309,6 +1350,7 @@ if (typeof document !== 'undefined') {
     sprintName = e.target.value.slice(0, SPRINT_NAME_MAX);
     persistSprint();
   });
+  window.addEventListener('storage', onSprintStorage);
   var resetDialog = document.getElementById('reset-dialog');
   document.getElementById('sprint-reset').addEventListener('click', function () {
     if (typeof resetDialog.showModal === 'function') resetDialog.showModal();
